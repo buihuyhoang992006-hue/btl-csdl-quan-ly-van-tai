@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+
+{% block title %}Danh sách xe{% endblock %}
+
+{% block content %}
+<h1>Danh sách xe</h1>
+<p><a class="btn btn-primary" href="{{ url_for('xe.them') }}">Thêm xe</a></p>
+
+{% if loi %}
+    <p role="alert">{{ loi }}</p>
+{% elif danh_sach_xe %}
+    <div style="overflow-x: auto;">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th scope="col">Biển số</th>
+                    <th scope="col">Hãng sản xuất</th>
+                    <th scope="col">Model</th>
+                    <th scope="col">Đời xe</th>
+                    <th scope="col">Màu xe</th>
+                    <th scope="col">Số ghế</th>
+                    <th scope="col">Số khách tối đa</th>
+                    <th scope="col">Ngày đưa vào sử dụng</th>
+                    <th scope="col">Số năm sử dụng</th>
+                    <th scope="col">Ngày bảo dưỡng cuối</th>
+                    <th scope="col">Thao tác</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for xe in danh_sach_xe %}
+                    <tr>
+                        <th scope="row">{{ xe.bien_so }}</th>
+                        <td>{{ xe.hang_san_xuat }}</td>
+                        <td>{{ xe.model }}</td>
+                        <td>{{ xe.doi_xe }}</td>
+                        <td>{{ xe.mau_xe }}</td>
+                        <td>{{ xe.so_ghe }}</td>
+                        <td>{{ xe.so_khach_toi_da }}</td>
+                        <td>{{ xe.ngay_dua_vao_su_dung.strftime('%d/%m/%Y') }}</td>
+                        <td>{{ xe.so_nam_su_dung }}</td>
+                        <td>{{ xe.ngay_bao_duong_cuoi.strftime('%d/%m/%Y') }}</td>
+                        <td>
+                            <a href="{{ url_for('xe.sua', ma_xe=xe.ma_xe) }}">Sửa</a>
+                            <a class="text-danger" href="{{ url_for('xe.xoa', ma_xe=xe.ma_xe) }}">Xóa</a>
+                            <a href="{{ url_for('xe.lich_su', ma_xe=xe.ma_xe) }}">Lịch sử chuyến</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <p>Chưa có xe trong hệ thống.</p>
+{% endif %}
+{% endblock %}
