@@ -4,6 +4,7 @@
 
 {% block content %}
 <h1>Danh sách xe</h1>
+<p><a class="btn btn-primary" href="{{ url_for('xe.them') }}">Thêm xe</a></p>
 
 {% if loi %}
     <p role="alert">{{ loi }}</p>
@@ -22,6 +23,7 @@
                     <th scope="col">Ngày đưa vào sử dụng</th>
                     <th scope="col">Số năm sử dụng</th>
                     <th scope="col">Ngày bảo dưỡng cuối</th>
+                    <th scope="col">Thao tác</th>
                 </tr>
             </thead>
             <tbody>
@@ -37,6 +39,11 @@
                         <td>{{ xe.ngay_dua_vao_su_dung.strftime('%d/%m/%Y') }}</td>
                         <td>{{ xe.so_nam_su_dung }}</td>
                         <td>{{ xe.ngay_bao_duong_cuoi.strftime('%d/%m/%Y') }}</td>
+                        <td>
+                            <a href="{{ url_for('xe.sua', ma_xe=xe.ma_xe) }}">Sửa</a>
+                            <a class="text-danger" href="{{ url_for('xe.xoa', ma_xe=xe.ma_xe) }}">Xóa</a>
+                            <a href="{{ url_for('xe.lich_su', ma_xe=xe.ma_xe) }}">Lịch sử chuyến</a>
+                        </td>
                     </tr>
                 {% endfor %}
             </tbody>

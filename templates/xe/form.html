@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% macro o_nhap(ten, nhan, kieu="text", so_ky_tu=none, nho_nhat=none, lon_nhat=none) %}
+    <div class="mb-3">
+        <label class="form-label" for="{{ ten }}">{{ nhan }}</label>
+        <input class="form-control" type="{{ kieu }}" id="{{ ten }}" name="{{ ten }}"
+               value="{{ form.get(ten, '') }}" required
+               {% if so_ky_tu is not none %}maxlength="{{ so_ky_tu }}"{% endif %}
+               {% if nho_nhat is not none %}min="{{ nho_nhat }}"{% endif %}
+               {% if lon_nhat is not none %}max="{{ lon_nhat }}"{% endif %}
+               {% if ten in loi %}aria-invalid="true" aria-describedby="loi-{{ ten }}"{% endif %}>
+        {% if ten in loi %}
+            <p class="text-danger" id="loi-{{ ten }}">{{ loi[ten] }}</p>
+        {% endif %}
+    </div>
+{% endmacro %}
+
+{% set dang_sua = ma_xe is not none %}
+{% set tieu_de = 'Sửa xe' if dang_sua else 'Thêm xe' %}
+{% set duong_dan_luu = url_for('xe.luu_sua', ma_xe=ma_xe) if dang_sua else url_for('xe.them') %}
+
+{% block title %}{{ tieu_de }}{% endblock %}
+
+{% block content %}
+<h1>{{ tieu_de }}</h1>
+
+<form method="post" action="{{ duong_dan_luu }}">
+    {% if loi.get('chung') %}
+        <p class="text-danger" role="alert">{{ loi.chung }}</p>
+    {% endif %}
+
+    {{ o_nhap('bien_so', 'Biển số', so_ky_tu=20) }}
+    {{ o_nhap('hang_san_xuat', 'Hãng sản xuất', so_ky_tu=80) }}
+    {{ o_nhap('model', 'Model', so_ky_tu=80) }}
+    {{ o_nhap('doi_xe', 'Đời xe (năm sản xuất)', 'number', nho_nhat=0, lon_nhat=65535) }}
+    {{ o_nhap('mau_xe', 'Màu xe', so_ky_tu=80) }}
+    {{ o_nhap('so_ghe', 'Số ghế', 'number', nho_nhat=3, lon_nhat=65535) }}
+    {{ o_nhap('ngay_dua_vao_su_dung', 'Ngày đưa vào sử dụng', 'date', lon_nhat=hom_nay) }}
+    {% if not dang_sua %}
+        {{ o_nhap('ngay_bao_duong_cuoi', 'Ngày bảo dưỡng cuối', 'date', lon_nhat=hom_nay) }}
+    {% elif form.get('ngay_bao_duong_cuoi') %}
+        <div class="mb-3">
+            <span class="form-label">Ngày bảo dưỡng cuối</span>
+            <p>{{ form.ngay_bao_duong_cuoi.strftime('%d/%m/%Y') }}</p>
+        </div>
+    {% endif %}
+
+    <button class="btn btn-primary" type="submit">Lưu xe</button>
+    <a class="btn btn-secondary" href="{{ url_for('xe.danh_sach') }}">Quay lại danh sách</a>
+</form>
+{% endblock %}
