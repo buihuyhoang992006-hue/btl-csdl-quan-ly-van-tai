@@ -1,0 +1,52 @@
+
+{% extends "base.html" %}
+
+{% block title %}Thống kê tuyến xe{% endblock %}
+
+{% block content %}
+<h1>Thống kê tuyến xe theo tháng</h1>
+
+<form method="GET">
+    <label for="thang">Chọn tháng:</label>
+
+    <input
+        type="month"
+        id="thang"
+        name="thang"
+        value="{{ thang }}"
+        required
+    >
+
+    <button type="submit">Thống kê</button>
+</form>
+
+<table border="1" cellpadding="8" cellspacing="0">
+    <thead>
+        <tr>
+            <th>Mã tuyến</th>
+            <th>Điểm đầu</th>
+            <th>Điểm cuối</th>
+            <th>Độ dài (km)</th>
+            <th>Số chuyến</th>
+            <th>Tổng số khách</th>
+        </tr>
+    </thead>
+
+    <tbody>
+        {% for tuyen in ds_tuyen %}
+        <tr>
+            <td>{{ tuyen.ma_tuyen }}</td>
+            <td>{{ tuyen.diem_dau }}</td>
+            <td>{{ tuyen.diem_cuoi }}</td>
+            <td>{{ tuyen.do_dai_km }}</td>
+            <td>{{ tuyen.so_chuyen }}</td>
+            <td>{{ tuyen.tong_khach }}</td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="6">Chưa có tuyến xe nào.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}

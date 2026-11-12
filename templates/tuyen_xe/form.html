@@ -1,0 +1,58 @@
+
+{% extends "base.html" %}
+
+{% macro o_nhap(ten, nhan, kieu="text", so_ky_tu=none, nho_nhat=none, lon_nhat=none, buoc=none) %}
+    <div class="mb-3">
+        <label class="form-label" for="{{ ten }}">{{ nhan }}</label>
+        <input class="form-control" type="{{ kieu }}" id="{{ ten }}" name="{{ ten }}"
+               value="{{ form.get(ten, '') }}" required
+               {% if so_ky_tu is not none %}maxlength="{{ so_ky_tu }}"{% endif %}
+               {% if nho_nhat is not none %}min="{{ nho_nhat }}"{% endif %}
+               {% if lon_nhat is not none %}max="{{ lon_nhat }}"{% endif %}
+               {% if buoc is not none %}step="{{ buoc }}"{% endif %}
+               {% if ten in loi %}aria-invalid="true" aria-describedby="loi-{{ ten }}"{% endif %}>
+        {% if ten in loi %}
+            <p class="text-danger" id="loi-{{ ten }}">{{ loi[ten] }}</p>
+        {% endif %}
+    </div>
+{% endmacro %}
+
+{% set dang_sua = ma_tuyen is not none %}
+{% set tieu_de = 'Sửa tuyến xe' if dang_sua else 'Thêm tuyến xe' %}
+{% set duong_dan_luu = url_for('tuyen_xe.luu_sua', ma_tuyen=ma_tuyen) if dang_sua else url_for('tuyen_xe.them') %}
+
+{% block title %}{{ tieu_de }}{% endblock %}
+
+{% block content %}
+<h1>{{ tieu_de }}</h1>
+
+<form method="post" action="{{ duong_dan_luu }}">
+    {% if loi.get('chung') %}
+        <p class="text-danger" role="alert">{{ loi.chung }}</p>
+    {% endif %}
+
+    {{ o_nhap('diem_dau', 'Điểm đầu', so_ky_tu=100) }}
+    {{ o_nhap('diem_cuoi', 'Điểm cuối', so_ky_tu=100) }}
+    {{ o_nhap('do_dai_km', 'Độ dài tuyến (km)', 'number', nho_nhat=0.01, lon_nhat=999999.99, buoc=0.01) }}
+
+    <div class="mb-3">
+        <label class="form-label" for="do_phuc_tap">Độ phức tạp</label>
+        <select class="form-select" id="do_phuc_tap" name="do_phuc_tap" required
+                {% if 'do_phuc_tap' in loi %}aria-invalid="true" aria-describedby="loi-do_phuc_tap"{% endif %}>
+            <option value="">-- Chọn độ phức tạp --</option>
+            {% for muc_do in (1, 2, 3) %}
+                <option value="{{ muc_do }}"
+                    {% if form.get('do_phuc_tap', '')|string == muc_do|string %}selected{% endif %}>
+                    {{ muc_do }}
+                </option>
+            {% endfor %}
+        </select>
+        {% if 'do_phuc_tap' in loi %}
+            <p class="text-danger" id="loi-do_phuc_tap">{{ loi.do_phuc_tap }}</p>
+        {% endif %}
+    </div>
+
+    <button class="btn btn-primary" type="submit">Lưu tuyến xe</button>
+    <a class="btn btn-secondary" href="{{ url_for('tuyen_xe.danh_sach') }}">Quay lại danh sách</a>
+</form>
+{% endblock %}
