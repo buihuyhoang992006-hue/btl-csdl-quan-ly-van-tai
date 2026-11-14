@@ -1,4 +1,3 @@
-
 <!DOCTYPE html>
 <html lang="vi">
 
@@ -8,6 +7,7 @@
 
     <title>{% block title %}Quản lý vận tải{% endblock %}</title>
 
+    <!-- Nạp file CSS dùng chung -->
     <link rel="stylesheet"
           href="{{ url_for('static', filename='style.css') }}">
 </head>
@@ -31,30 +31,26 @@
 
             <nav class="menu">
 
-                <!-- TRANG CHU -->
                 <a href="{{ url_for('trang_chu') }}"
                    class="menu-item {{ 'active' if request.path == '/' else '' }}">
                     Tổng quan
                 </a>
 
-                <!-- TV1: QUAN LY XE -->
                 <a href="{{ url_for('xe.danh_sach') }}"
                    class="menu-item {{ 'active' if request.path.startswith('/xe') else '' }}">
                     Quản lý xe
                 </a>
 
-                <!-- TV2: QUAN LY TUYEN -->
                 <a href="{{ url_for('tuyen_xe.danh_sach') }}"
                    class="menu-item {{ 'active' if request.path.startswith('/tuyen-xe') else '' }}">
                     Quản lý tuyến xe
                 </a>
 
-                <!-- TV3: CHUA TICH HOP -->
-                <span class="menu-item disabled">
+                <a href="{{ url_for('tai_xe.danh_sach') }}"
+                   class="menu-item {% if request.blueprint == 'tai_xe' %}active{% endif %}">
                     Quản lý tài xế
-                </span>
+                </a>
 
-                <!-- TV4: QUAN LY CHUYEN -->
                 <a href="{{ url_for('chuyen_xe.danh_sach') }}"
                    class="menu-item {{ 'active' if request.path.startswith('/chuyen-xe') else '' }}">
                     Quản lý chuyến xe
@@ -62,24 +58,16 @@
 
                 <p class="menu-label">BÁO CÁO</p>
 
-                <!-- TV2: DOANH THU -->
                 <a href="{{ url_for('doanh_thu.doanh_thu') }}"
-                   class="menu-item {{ 'active' if request.path == '/bao-cao/doanh-thu' else '' }}">
+                   class="menu-item {{ 'active' if request.path.startswith('/bao-cao/doanh-thu') else '' }}">
                     Doanh thu theo xe
                 </a>
 
-                <!-- TV2: THONG KE TUYEN -->
-                <a href="{{ url_for('doanh_thu.thong_ke_tuyen') }}"
-                   class="menu-item {{ 'active' if request.path == '/bao-cao/thong-ke-tuyen' else '' }}">
-                    Thống kê tuyến xe
+                <a href="{{ url_for('luong.bao_cao_luong') }}"
+                   class="menu-item {% if request.blueprint == 'luong' %}active{% endif %}">
+                    Lương tài xế
                 </a>
 
-                <!-- TV3: CHUA TICH HOP -->
-                <span class="menu-item disabled">
-                    Lương tài xế
-                </span>
-
-                <!-- TV5: BAO DUONG -->
                 <a href="{{ url_for('bao_duong.danh_sach') }}"
                    class="menu-item {{ 'active' if request.path.startswith('/bao-cao/bao-duong') else '' }}">
                     Hạn bảo dưỡng
@@ -93,9 +81,10 @@
 
         </aside>
 
-        <!-- NOI DUNG BEN PHAI -->
+        <!-- PHẦN BÊN PHẢI -->
         <div class="app-main">
 
+            <!-- THANH TIÊU ĐỀ -->
             <header class="topbar">
                 <div>
                     <small>HỆ THỐNG QUẢN LÝ</small>
@@ -105,11 +94,13 @@
                 <span class="topbar-status">Nội bộ</span>
             </header>
 
+            <!-- NỘI DUNG CỦA TỪNG TRANG -->
             <main class="content">
                 {% block content %}
                 {% endblock %}
             </main>
 
+            <!-- CHÂN TRANG -->
             <footer class="footer">
                 Bài tập lớn Cơ sở dữ liệu - Project 5
             </footer>

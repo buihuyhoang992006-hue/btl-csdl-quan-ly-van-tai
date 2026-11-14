@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}Báo cáo lương tài xế{% endblock %}
+
+{% block content %}
+<h1>Báo cáo lương tài xế theo tháng</h1>
+
+<form method="get" action="{{ url_for('luong.bao_cao_luong') }}">
+    <div class="mb-3">
+        <label class="form-label" for="thang">Chọn tháng:</label>
+        <input
+            class="form-control"
+            type="month"
+            id="thang"
+            name="thang"
+            value="{{ thang_chon }}"
+            max="{{ thang_hien_tai }}"
+            required
+        >
+    </div>
+    <button class="btn btn-primary" type="submit">Xem bảng lương</button>
+</form>
+
+{% if thang_chon == thang_hien_tai and not loi %}
+    <p><small>Số liệu tháng hiện tại được tính đến hết ngày {{ hom_nay.strftime('%d/%m/%Y') }}.</small></p>
+{% endif %}
+
+{% if loi %}
+    <p class="text-danger" role="alert">{{ loi }}</p>
+{% elif danh_sach_luong %}
+    <div style="overflow-x: auto;">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th scope="col">Họ tên tài xế</th>
+                    <th scope="col">Số chuyến lái</th>
+                    <th scope="col">Số chuyến phụ</th>
+                    <th scope="col">Tổng lương</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for dong in danh_sach_luong %}
+                    <tr>
+                        <th scope="row">{{ dong.ho_ten }}</th>
+                        <td>{{ dong.so_chuyen_lai }}</td>
+                        <td>{{ dong.so_chuyen_phu }}</td>
+                        <td>{{ '{:,.0f}'.format(dong.tong_luong).replace(',', '.') }} VND</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <p>Chưa có dữ liệu tài xế trong hệ thống.</p>
+{% endif %}
+{% endblock %}
