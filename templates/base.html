@@ -51,9 +51,11 @@
                     Quản lý tài xế
                 </span>
 
-                <span class="menu-item disabled">
-                    Quản lý chuyến xe
-                </span>
+                    <a href="{{ url_for('chuyen_xe.danh_sach') }}"
+                        class="menu-item {{ 'active' if request.path.startswith('/chuyen-xe') else '' }}">
+                        Quản lý chuyến xe
+                    </a>
+                
 
                 <p class="menu-label">BÁO CÁO</p>
 
