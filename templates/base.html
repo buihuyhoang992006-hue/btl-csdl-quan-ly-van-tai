@@ -7,7 +7,6 @@
 
     <title>{% block title %}Quản lý vận tải{% endblock %}</title>
 
-    <!-- Nạp file CSS dùng chung -->
     <link rel="stylesheet"
           href="{{ url_for('static', filename='style.css') }}">
 </head>
@@ -31,49 +30,76 @@
 
             <nav class="menu">
 
+                <!-- TRANG CHU -->
                 <a href="{{ url_for('trang_chu') }}"
                    class="menu-item {{ 'active' if request.path == '/' else '' }}">
                     Tổng quan
                 </a>
 
+                <!-- TV1: QUAN LY XE -->
                 <a href="{{ url_for('xe.danh_sach') }}"
                    class="menu-item {{ 'active' if request.path.startswith('/xe') else '' }}">
                     Quản lý xe
                 </a>
 
-                <!-- Chờ tích hợp Blueprint các thành viên -->
-                <span class="menu-item disabled">
+                <!-- TV2: QUAN LY TUYEN -->
+                <a href="{{ url_for('tuyen_xe.danh_sach') }}"
+                   class="menu-item {{ 'active' if request.path.startswith('/tuyen-xe') else '' }}">
                     Quản lý tuyến xe
-                </span>
+                </a>
 
+<<<<<<< HEAD
                 <a href="{{ url_for('tai_xe.danh_sach') }}"
                    class="menu-item {% if request.blueprint == 'tai_xe' %}active{% endif %}">
+=======
+                <!-- TV3: CHUA TICH HOP -->
+                <span class="menu-item disabled">
+>>>>>>> develop
                     Quản lý tài xế
                 </a>
 
+<<<<<<< HEAD
+=======
+                <!-- TV4: QUAN LY CHUYEN -->
+>>>>>>> develop
                 <a href="{{ url_for('chuyen_xe.danh_sach') }}"
                    class="menu-item {{ 'active' if request.path.startswith('/chuyen-xe') else '' }}">
                     Quản lý chuyến xe
                 </a>
+<<<<<<< HEAD
                 
+=======
+>>>>>>> develop
 
                 <p class="menu-label">BÁO CÁO</p>
 
-                <span class="menu-item disabled">
+                <!-- TV2: DOANH THU -->
+                <a href="{{ url_for('doanh_thu.doanh_thu') }}"
+                   class="menu-item {{ 'active' if request.path == '/bao-cao/doanh-thu' else '' }}">
                     Doanh thu theo xe
-                </span>
+                </a>
 
+<<<<<<< HEAD
                 <a href="{{ url_for('luong.bao_cao_luong') }}"
                    class="menu-item {% if request.blueprint == 'luong' %}active{% endif %}">
+=======
+                <!-- TV2: THONG KE TUYEN -->
+                <a href="{{ url_for('doanh_thu.thong_ke_tuyen') }}"
+                   class="menu-item {{ 'active' if request.path == '/bao-cao/thong-ke-tuyen' else '' }}">
+                    Thống kê tuyến xe
+                </a>
+
+                <!-- TV3: CHUA TICH HOP -->
+                <span class="menu-item disabled">
+>>>>>>> develop
                     Lương tài xế
                 </a>
 
-                
+                <!-- TV5: BAO DUONG -->
                 <a href="{{ url_for('bao_duong.danh_sach') }}"
-                class="menu-item {{ 'active' if request.path.startswith('/bao-cao/bao-duong') else '' }}">
+                   class="menu-item {{ 'active' if request.path.startswith('/bao-cao/bao-duong') else '' }}">
                     Hạn bảo dưỡng
                 </a>
-
 
             </nav>
 
@@ -83,10 +109,9 @@
 
         </aside>
 
-        <!-- PHẦN BÊN PHẢI -->
+        <!-- NOI DUNG BEN PHAI -->
         <div class="app-main">
 
-            <!-- THANH TIÊU ĐỀ -->
             <header class="topbar">
                 <div>
                     <small>HỆ THỐNG QUẢN LÝ</small>
@@ -96,13 +121,11 @@
                 <span class="topbar-status">Nội bộ</span>
             </header>
 
-            <!-- NỘI DUNG CỦA TỪNG TRANG -->
             <main class="content">
                 {% block content %}
                 {% endblock %}
             </main>
 
-            <!-- CHÂN TRANG -->
             <footer class="footer">
                 Bài tập lớn Cơ sở dữ liệu - Project 5
             </footer>
