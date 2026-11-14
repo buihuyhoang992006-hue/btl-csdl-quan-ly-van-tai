@@ -47,14 +47,15 @@
                     Quản lý tuyến xe
                 </span>
 
-                <span class="menu-item disabled">
+                <a href="{{ url_for('tai_xe.danh_sach') }}"
+                   class="menu-item {% if request.blueprint == 'tai_xe' %}active{% endif %}">
                     Quản lý tài xế
-                </span>
+                </a>
 
-                    <a href="{{ url_for('chuyen_xe.danh_sach') }}"
-                        class="menu-item {{ 'active' if request.path.startswith('/chuyen-xe') else '' }}">
-                        Quản lý chuyến xe
-                    </a>
+                <a href="{{ url_for('chuyen_xe.danh_sach') }}"
+                   class="menu-item {{ 'active' if request.path.startswith('/chuyen-xe') else '' }}">
+                    Quản lý chuyến xe
+                </a>
                 
 
                 <p class="menu-label">BÁO CÁO</p>
@@ -63,9 +64,10 @@
                     Doanh thu theo xe
                 </span>
 
-                <span class="menu-item disabled">
+                <a href="{{ url_for('luong.bao_cao_luong') }}"
+                   class="menu-item {% if request.blueprint == 'luong' %}active{% endif %}">
                     Lương tài xế
-                </span>
+                s</a>
 
                 
                 <a href="{{ url_for('bao_duong.danh_sach') }}"

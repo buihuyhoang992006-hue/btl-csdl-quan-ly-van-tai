@@ -5,6 +5,9 @@ from datetime import datetime, timedelta, timezone
 from flask import Flask, render_template
 from mysql.connector import Error
 
+from modules.tai_xe import tai_xe_bp
+from modules.luong import luong_bp
+
 from db import get_connection
 from modules.xe import bp as xe_bp
 from modules.chuyenxe import bp as chuyen_xe_bp
@@ -24,6 +27,8 @@ app.register_blueprint(xe_bp)
 app.register_blueprint(chuyen_xe_bp)
 app.register_blueprint(bao_duong_bp)
 
+app.register_blueprint(tai_xe_bp)
+app.register_blueprint(luong_bp)
 
 # TRANG CHU - DASHBOARD
 @app.route("/")
