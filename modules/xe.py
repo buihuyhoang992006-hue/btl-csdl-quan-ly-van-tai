@@ -88,6 +88,10 @@ def kiem_tra_xe(form, hom_nay, *, ngay_bao_duong_da_luu=None):
             xe[cot] = gia_tri
 
     ngay_su_dung = xe.get("ngay_dua_vao_su_dung")
+    nam_san_xuat = xe.get("doi_xe")
+    if ngay_su_dung is not None and nam_san_xuat is not None and nam_san_xuat > ngay_su_dung.year:
+        loi["doi_xe"] = "Năm sản xuất không được sau năm đưa xe vào sử dụng."
+
     ngay_bao_duong = ngay_bao_duong_da_luu or xe.get("ngay_bao_duong_cuoi")
     if ngay_su_dung and ngay_bao_duong and ngay_bao_duong < ngay_su_dung:
         if ngay_bao_duong_da_luu is None:
