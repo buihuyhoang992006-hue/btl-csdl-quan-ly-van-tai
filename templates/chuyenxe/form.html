@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% set tieu_de = {
+    'them': 'Lập chuyến xe',
+    'sua': 'Sửa chuyến xe',
+    'hoan_thanh': 'Xác nhận hoàn thành chuyến'
+}[hanh_dong] %}
+
+{% macro thong_bao_loi(ten) %}
+    {% if ten in loi %}
+        <p class="text-danger" id="loi-{{ ten }}">{{ loi[ten] }}</p>
+    {% endif %}
+{% endmacro %}
+
+{% macro o_nhap(ten, nhan, kieu, nho_nhat=none, lon_nhat=none) %}
+    <div class="mb-3">
+        <label class="form-label" for="{{ ten }}">{{ nhan }}</label>
+        <input class="form-control" type="{{ kieu }}" id="{{ ten }}" name="{{ ten }}"
+               value="{{ form.get(ten, '') }}" required
+               {% if kieu == 'number' %}step="1"{% endif %}
+               {% if nho_nhat is not none %}min="{{ nho_nhat }}"{% endif %}
+               {% if lon_nhat is not none %}max="{{ lon_nhat }}"{% endif %}
+               {% if ten == 'so_khach' %}
+                   aria-describedby="gioi-han-khach{{ ' loi-' ~ ten if ten in loi else '' }}"
+               {% elif ten in loi %}
+                   aria-describedby="loi-{{ ten }}"
+               {% endif %}
+               {% if ten in loi %}aria-invalid="true"{% endif %}>
+        {{ thong_bao_loi(ten) }}
+    </div>
+{% endmacro %}
+
+{% macro o_chon(ten, nhan, cac_muc, khoa, du_lieu) %}
+    <div class="mb-3">
+        <label class="form-label" for="{{ ten }}">{{ nhan }}</label>
+        <select class="form-select" id="{{ ten }}" name="{{ ten }}"
+                {% if khoa %}disabled{% else %}required{% endif %}
+                {% if ten in loi %}aria-invalid="true" aria-describedby="loi-{{ ten }}"{% endif %}>
+            <option value="">— Chọn {{ nhan|lower }} —</option>
+
+            {% for muc in cac_muc %}
+                {% if ten == 'ma_xe' %}
+                    {% set ma, nhan_muc = muc.ma_xe, muc.bien_so %}
+                {% elif ten == 'ma_tuyen' %}
+                    {% set ma, nhan_muc = muc.ma_tuyen, muc.diem_dau ~ ' → ' ~ muc.diem_cuoi %}
+                {% else %}
+                    {% set ma, nhan_muc = muc.ma_tai_xe, muc.ho_ten ~ ' (#' ~ muc.ma_tai_xe ~ ')' %}
+                {% endif %}
+
+                <option value="{{ ma }}"
+                        {% if ten == 'ma_xe' %}data-so-ghe="{{ muc.so_ghe }}"{% endif %}
+                        {% if du_lieu.get(ten, '')|string == ma|string %}selected{% endif %}>
+                    {{ nhan_muc }}
+                </option>
+            {% endfor %}
+        </select>
+
+        {% if khoa %}
+            <input type="hidden" name="{{ ten }}" value="{{ du_lieu.get(ten, '') }}">
+        {% endif %}
+        {{ thong_bao_loi(ten) }}
+    </div>
+{% endmacro %}
+
+{% block title %}{{ tieu_de }}{% endblock %}
+
+{% block content %}
+{% set xac_nhan = hanh_dong == 'hoan_thanh' %}
+{% set du_lieu_hien_thi = form if not xac_nhan or chuyen is none else chuyen %}
+
+<h1>{{ tieu_de }}{% if chuyen %} #{{ chuyen.ma_chuyen }}{% endif %}</h1>
+
+{% if loi.get('chung') %}
+    <p role="alert">{{ loi.chung }}</p>
+{% endif %}
+
+{% set co_danh_muc = danh_muc.get('xe') and danh_muc.get('tuyen') and danh_muc.get('tai_xe', [])|length >= 2 %}
+{% if danh_muc and not co_danh_muc %}
+    <p role="alert">Cần ít nhất một xe, một tuyến và hai tài xế để lưu chuyến.</p>
+{% endif %}
+
+<form method="post">
+    {{ o_chon('ma_xe', 'Xe', danh_muc.get('xe', []), xac_nhan, du_lieu_hien_thi) }}
+    <p id="gioi-han-khach" aria-live="polite">Chọn xe để xem số khách tối đa.</p>
+
+    {{ o_chon('ma_tuyen', 'Tuyến xe', danh_muc.get('tuyen', []), xac_nhan, du_lieu_hien_thi) }}
+    {{ o_chon('ma_lai_xe', 'Lái xe', danh_muc.get('tai_xe', []), xac_nhan, du_lieu_hien_thi) }}
+    {{ o_chon('ma_phu_xe', 'Phụ xe', danh_muc.get('tai_xe', []), xac_nhan, du_lieu_hien_thi) }}
+
+    {{ o_nhap('ngay_chay', 'Ngày chạy thực tế' if xac_nhan else 'Ngày chạy dự kiến',
+              'date', nho_nhat='1000-01-01', lon_nhat=hom_nay if xac_nhan else none) }}
+    {{ o_nhap('so_khach', 'Số khách', 'number', 0, 65535) }}
+    {{ o_nhap('gia_ve', 'Giá vé (đồng)', 'number', 0, 999999999999) }}
+
+    <button class="btn btn-primary" type="submit" {% if not co_danh_muc %}disabled{% endif %}>
+        {{ 'Xác nhận hoàn thành' if xac_nhan else 'Lưu chuyến' }}
+    </button>
+    <a class="btn btn-secondary" href="{{ url_for('chuyen_xe.danh_sach') }}">Quay lại</a>
+</form>
+
+<script>
+    const xeDangChon = document.getElementById("ma_xe");
+    const soKhach = document.getElementById("so_khach");
+    const gioiHan = document.getElementById("gioi-han-khach");
+
+    function capNhatGioiHan() {
+        const soGhe = xeDangChon.selectedOptions[0]?.dataset.soGhe;
+        if (soGhe) {
+            const toiDa = Number(soGhe) - 2;
+            soKhach.max = toiDa;
+            gioiHan.textContent = `Xe này chở tối đa ${toiDa} khách.`;
+        } else {
+            soKhach.max = 65535;
+            gioiHan.textContent = "Chọn xe để xem số khách tối đa.";
+        }
+    }
+
+    xeDangChon.addEventListener("change", capNhatGioiHan);
+    capNhatGioiHan();
+</script>
+{% endblock %}
