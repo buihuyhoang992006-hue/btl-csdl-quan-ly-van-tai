@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% macro o_nhap(ten, nhan, kieu="text", so_ky_tu=none, lon_nhat=none) %}
+    <div class="mb-3">
+        <label class="form-label" for="{{ ten }}">{{ nhan }}</label>
+        <input class="form-control" type="{{ kieu }}" id="{{ ten }}" name="{{ ten }}"
+               value="{{ form.get(ten, '') }}" required
+               {% if so_ky_tu is not none %}maxlength="{{ so_ky_tu }}"{% endif %}
+               {% if lon_nhat is not none %}max="{{ lon_nhat }}"{% endif %}
+               {% if ten in loi %}aria-invalid="true" aria-describedby="loi-{{ ten }}"{% endif %}>
+        {% if ten in loi %}
+            <p class="text-danger" id="loi-{{ ten }}">{{ loi[ten] }}</p>
+        {% endif %}
+    </div>
+{% endmacro %}
+
+{% set dang_sua = ma_tai_xe is not none %}
+{% set tieu_de = 'Sửa thông tin tài xế' if dang_sua else 'Thêm tài xế' %}
+{% set duong_dan_luu = url_for('tai_xe.luu_sua', ma_tai_xe=ma_tai_xe) if dang_sua else url_for('tai_xe.them') %}
+
+{% block title %}{{ tieu_de }}{% endblock %}
+
+{% block content %}
+<h1>{{ tieu_de }}</h1>
+
+<form method="post" action="{{ duong_dan_luu }}">
+    {% if loi.get('chung') %}
+        <p class="text-danger" role="alert">{{ loi.chung }}</p>
+    {% endif %}
+
+    {{ o_nhap('ho_ten', 'Họ và tên', so_ky_tu=100) }}
+    {{ o_nhap('cmt_cccd', 'Số CMT/CCCD', so_ky_tu=20) }}
+    {{ o_nhap('ma_bang_lai', 'Mã số bằng lái', so_ky_tu=30) }}
+    {{ o_nhap('loai_bang_lai', 'Loại bằng lái (VD: D, E, FC...)', so_ky_tu=20) }}
+    {{ o_nhap('dia_chi', 'Địa chỉ', so_ky_tu=255) }}
+    {{ o_nhap('ngay_sinh', 'Ngày sinh', 'date', lon_nhat=hom_nay) }}
+    {{ o_nhap('ngay_bat_dau_lai_xe', 'Ngày bắt đầu lái xe', 'date', lon_nhat=hom_nay) }}
+
+    <button class="btn btn-primary" type="submit">Lưu tài xế</button>
+    <a class="btn btn-secondary" href="{{ url_for('tai_xe.danh_sach') }}">Quay lại danh sách</a>
+</form>
+{% endblock %}

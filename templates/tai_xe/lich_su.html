@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+
+{% block title %}Lịch sử phân công tài xế{% endblock %}
+
+{% block content %}
+<h1>Lịch sử phân công{% if tai_xe %} của tài xế {{ tai_xe.ho_ten }}{% endif %}</h1>
+
+{% if loi %}
+    <p class="text-danger" role="alert">{{ loi }}</p>
+{% elif danh_sach_chuyen %}
+    {% set ten_trang_thai = {
+        'DA_LEN_LICH': 'Đã lên lịch',
+        'HOAN_THANH': 'Hoàn thành',
+        'DA_HUY': 'Đã hủy'
+    } %}
+    <div style="overflow-x: auto;">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th scope="col">Mã chuyến</th>
+                    <th scope="col">Ngày chạy</th>
+                    <th scope="col">Vai trò</th>
+                    <th scope="col">Tuyến</th>
+                    <th scope="col">Biển số xe</th>
+                    <th scope="col">Trạng thái</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for chuyen in danh_sach_chuyen %}
+                    <tr>
+                        <th scope="row">{{ chuyen.ma_chuyen }}</th>
+                        <td>{{ chuyen.ngay_chay.strftime('%d/%m/%Y') }}</td>
+                        <td><strong>{{ chuyen.vai_tro }}</strong></td>
+                        <td>{{ chuyen.diem_dau }} → {{ chuyen.diem_cuoi }}</td>
+                        <td>{{ chuyen.bien_so }}</td>
+                        <td>{{ ten_trang_thai.get(chuyen.trang_thai, chuyen.trang_thai) }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <p>Tài xế này chưa được phân công chuyến nào.</p>
+{% endif %}
+
+<a class="btn btn-secondary" href="{{ url_for('tai_xe.danh_sach') }}">Quay lại danh sách</a>
+{% endblock %}
