@@ -1,0 +1,45 @@
+
+{% extends "base.html" %}
+
+{% block title %}Danh sách tuyến xe{% endblock %}
+
+{% block content %}
+<h1>Danh sách tuyến xe</h1>
+<p><a class="btn btn-primary" href="{{ url_for('tuyen_xe.them') }}">Thêm tuyến xe</a></p>
+
+{% if loi %}
+    <p role="alert">{{ loi }}</p>
+{% elif danh_sach_tuyen %}
+    <div style="overflow-x: auto;">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th scope="col">Mã tuyến</th>
+                    <th scope="col">Điểm đầu</th>
+                    <th scope="col">Điểm cuối</th>
+                    <th scope="col">Độ dài (km)</th>
+                    <th scope="col">Độ phức tạp</th>
+                    <th scope="col">Thao tác</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for tuyen in danh_sach_tuyen %}
+                    <tr>
+                        <th scope="row">{{ tuyen.ma_tuyen }}</th>
+                        <td>{{ tuyen.diem_dau }}</td>
+                        <td>{{ tuyen.diem_cuoi }}</td>
+                        <td>{{ tuyen.do_dai_km }}</td>
+                        <td>{{ tuyen.do_phuc_tap }}</td>
+                        <td>
+                            <a href="{{ url_for('tuyen_xe.sua', ma_tuyen=tuyen.ma_tuyen) }}">Sửa</a>
+                            <a class="text-danger" href="{{ url_for('tuyen_xe.xoa', ma_tuyen=tuyen.ma_tuyen) }}">Xóa</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <p>Chưa có tuyến xe trong hệ thống.</p>
+{% endif %}
+{% endblock %}
