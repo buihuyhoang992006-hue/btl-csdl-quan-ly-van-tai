@@ -1,0 +1,145 @@
+
+{% extends "base.html" %}
+
+{% block title %}Hạn bảo dưỡng{% endblock %}
+
+{% block content %}
+
+<h1>Báo cáo hạn bảo dưỡng</h1>
+
+<p>
+    Ngày xem: {{ ngay_xem.strftime('%d/%m/%Y') }}
+</p>
+
+{% if request.args.get('saved') == '1' %}
+    <p class="bd-success">
+        Đã cập nhật bảo dưỡng thành công!
+    </p>
+{% endif %}
+
+{% if loi %}
+    <p class="text-danger" role="alert">
+        {{ loi }}
+    </p>
+{% endif %}
+
+{% if thong_bao %}
+    <p class="bd-warning">
+        {{ thong_bao }}
+    </p>
+{% endif %}
+
+
+{% macro bang_bao_cao(ds) %}
+<div class="bd-table-wrap">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Biển số</th>
+                <th>Bảo dưỡng cuối</th>
+                <th>Km quy đổi</th>
+                <th>Ngày đến hạn</th>
+                <th>Thao tác</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            {% for xe in ds %}
+            <tr>
+                <td>{{ xe.bien_so }}</td>
+
+                <td>
+                    {{ xe.ngay_bao_duong_cuoi.strftime('%d/%m/%Y') }}
+                </td>
+
+                <td>
+                    {{ "%.2f"|format(xe.tong_km_quy_doi) }} km
+                </td>
+
+                <td>
+                    {{ xe.ngay_den_han.strftime('%d/%m/%Y') }}
+                </td>
+
+                <td>
+                    <a class="btn btn-primary"
+                       href="{{ url_for('bao_duong.cap_nhat', ma_xe=xe.ma_xe) }}">
+                        Ghi nhận
+                    </a>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5">Không có xe.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endmacro %}
+
+
+{% if not loi %}
+
+    {% if thong_bao %}
+
+    <div class="card">
+        <h2>Danh sách xe</h2>
+
+        <div class="bd-table-wrap">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Biển số</th>
+                        <th>Bảo dưỡng cuối</th>
+                        <th>Thao tác</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for xe in xe_cho_du_lieu %}
+                    <tr>
+                        <td>{{ xe.bien_so }}</td>
+
+                        <td>
+                            {{ xe.ngay_bao_duong_cuoi.strftime('%d/%m/%Y') }}
+                        </td>
+
+                        <td>
+                            <a class="btn btn-primary"
+                               href="{{ url_for('bao_duong.cap_nhat', ma_xe=xe.ma_xe) }}">
+                                Ghi nhận bảo dưỡng
+                            </a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="3">Chưa có xe.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% else %}
+
+    <div class="card">
+        <h2>Xe quá hạn ({{ qua_han|length }})</h2>
+        {{ bang_bao_cao(qua_han) }}
+    </div>
+
+    <div class="card">
+        <h2>Đến hạn hôm nay ({{ den_han|length }})</h2>
+        {{ bang_bao_cao(den_han) }}
+    </div>
+
+    <div class="card">
+        <h2>Xe còn hạn ({{ con_han|length }})</h2>
+        {{ bang_bao_cao(con_han) }}
+    </div>
+
+    {% endif %}
+
+{% endif %}
+
+{% endblock %}

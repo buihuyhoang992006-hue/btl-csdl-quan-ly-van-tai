@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Lịch sử chuyến{% endblock %}
+
+{% block content %}
+<h1>Lịch sử chuyến{% if xe %} của xe {{ xe.bien_so }}{% endif %}</h1>
+
+{% if loi %}
+    <p role="alert">{{ loi }}</p>
+{% elif danh_sach_chuyen %}
+    {% set ten_trang_thai = {
+        'DA_LEN_LICH': 'Đã lên lịch',
+        'HOAN_THANH': 'Hoàn thành',
+        'DA_HUY': 'Đã hủy'
+    } %}
+    <div style="overflow-x: auto;">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th scope="col">Mã chuyến</th>
+                    <th scope="col">Ngày chạy</th>
+                    <th scope="col">Tuyến</th>
+                    <th scope="col">Lái xe</th>
+                    <th scope="col">Phụ xe</th>
+                    <th scope="col">Số khách</th>
+                    <th scope="col">Giá vé</th>
+                    <th scope="col">Trạng thái</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for chuyen in danh_sach_chuyen %}
+                    <tr>
+                        <th scope="row">{{ chuyen.ma_chuyen }}</th>
+                        <td>{{ chuyen.ngay_chay.strftime('%d/%m/%Y') }}</td>
+                        <td>{{ chuyen.diem_dau }} → {{ chuyen.diem_cuoi }}</td>
+                        <td>{{ chuyen.ten_lai_xe }}</td>
+                        <td>{{ chuyen.ten_phu_xe }}</td>
+                        <td>{{ chuyen.so_khach }}</td>
+                        <td>{{ '{:,.0f}'.format(chuyen.gia_ve).replace(',', '.') }} đ</td>
+                        <td>{{ ten_trang_thai.get(chuyen.trang_thai, chuyen.trang_thai) }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <p>Xe này chưa có chuyến nào.</p>
+{% endif %}
+
+<a class="btn btn-secondary" href="{{ url_for('xe.danh_sach') }}">Quay lại danh sách</a>
+{% endblock %}

@@ -1,0 +1,28 @@
+
+{% extends "base.html" %}
+
+{% block title %}Xóa tuyến xe{% endblock %}
+
+{% block content %}
+<h1>Xóa tuyến xe</h1>
+
+{% if loi %}
+    <p role="alert">{{ loi }}</p>
+{% elif chuyen %}
+    <p role="alert">
+        Tuyến xe <strong>{{ tuyen.diem_dau }} - {{ tuyen.diem_cuoi }}</strong>
+        đã được sử dụng cho chuyến {{ chuyen.ma_chuyen }}
+        nên không thể xóa.
+    </p>
+{% else %}
+    <p>
+        Bạn muốn xóa tuyến xe
+        <strong>{{ tuyen.diem_dau }} - {{ tuyen.diem_cuoi }}</strong>?
+    </p>
+    <form method="post" action="{{ url_for('tuyen_xe.xoa', ma_tuyen=ma_tuyen) }}">
+        <button class="btn btn-danger" type="submit">Xác nhận xóa</button>
+    </form>
+{% endif %}
+
+<a class="btn btn-secondary" href="{{ url_for('tuyen_xe.danh_sach') }}">Quay lại danh sách</a>
+{% endblock %}

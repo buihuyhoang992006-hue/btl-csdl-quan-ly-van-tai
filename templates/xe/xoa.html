@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Xóa xe{% endblock %}
+
+{% block content %}
+<h1>Xóa xe</h1>
+
+{% if loi %}
+    <p role="alert">{{ loi }}</p>
+{% elif chuyen %}
+    <p role="alert">
+        Xe <strong>{{ xe.bien_so }}</strong> đã được gán cho chuyến {{ chuyen.ma_chuyen }}
+        nên không thể xóa.
+    </p>
+{% else %}
+    <p>Bạn muốn xóa xe <strong>{{ xe.bien_so }}</strong>?</p>
+    <form method="post" action="{{ url_for('xe.xoa', ma_xe=ma_xe) }}">
+        <button class="btn btn-danger" type="submit">Xác nhận xóa</button>
+    </form>
+{% endif %}
+
+<a class="btn btn-secondary" href="{{ url_for('xe.danh_sach') }}">Quay lại danh sách</a>
+{% endblock %}

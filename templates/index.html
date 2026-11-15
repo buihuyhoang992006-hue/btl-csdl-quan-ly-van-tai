@@ -1,0 +1,143 @@
+
+{% extends "base.html" %}
+
+{% block title %}
+Trang chủ - Quản lý vận tải
+{% endblock %}
+
+{% block content %}
+
+<h1>Tổng quan hệ thống</h1>
+
+<p>
+    Chào mừng đến với hệ thống quản lý
+    hãng vận tải hành khách đường dài.
+</p>
+
+<!-- THONG KE DASHBOARD -->
+
+<div class="dashboard-stats">
+
+    <!-- Tong so xe -->
+    <div class="stat-card">
+        <p class="stat-label">Tổng số xe</p>
+
+        <h2 class="stat-number">
+            {{ thong_ke.tong_xe
+               if thong_ke.tong_xe is not none
+               else '—' }}
+        </h2>
+
+        <p class="stat-description">
+            Xe đang được quản lý
+        </p>
+    </div>
+
+    <!-- Chuyen xe hom nay -->
+    <div class="stat-card">
+        <p class="stat-label">Chuyến trong ngày</p>
+
+        <h2 class="stat-number">
+            {{ thong_ke.chuyen_hom_nay
+               if thong_ke.chuyen_hom_nay is not none
+               else '—' }}
+        </h2>
+
+        <p class="stat-description">
+            Không tính chuyến đã hủy
+        </p>
+    </div>
+
+    <!-- Xe qua han bao duong -->
+    <div class="stat-card">
+        <p class="stat-label">Xe quá hạn bảo dưỡng</p>
+
+        <h2 class="stat-number">
+            {{ thong_ke.xe_qua_han
+               if thong_ke.xe_qua_han is not none
+               else '—' }}
+        </h2>
+
+        <p class="stat-description">
+            Cần kiểm tra và bảo dưỡng
+        </p>
+    </div>
+
+</div>
+
+<!-- Thong bao du lieu chua san sang -->
+{% if thong_bao %}
+    <div class="dashboard-notice" role="status">
+        {% for noi_dung in thong_bao %}
+            <p>{{ noi_dung }}</p>
+        {% endfor %}
+    </div>
+{% endif %}
+
+<div class="card-grid">
+
+    <div class="card">
+        <h3>Quản lý xe</h3>
+        <p>
+            Xem danh sách xe, thêm, sửa, xóa
+            và tra cứu lịch sử chuyến xe.
+        </p>
+
+        <a class="btn btn-primary"
+           href="{{ url_for('xe.danh_sach') }}">
+            Xem danh sách xe
+        </a>
+    </div>
+
+    <div class="card">
+        <h3>Quản lý tuyến xe</h3>
+        <p>
+            Quản lý các tuyến vận tải,
+            điểm đi, điểm đến và độ dài tuyến.
+        </p>
+
+        <a class="btn btn-primary"
+           href="{{ url_for('tuyen_xe.danh_sach') }}">
+            Xem danh sách tuyến xe
+        </a>
+    </div>
+
+    <div class="card">
+        <h3>Quản lý chuyến xe</h3>
+        <p>
+            Lập lịch chuyến, phân công
+            tài xế và cập nhật trạng thái.
+        </p>
+
+        <a class="btn btn-primary"
+           href="{{ url_for('chuyen_xe.danh_sach') }}">
+            Xem danh sách chuyến xe
+        </a>
+    </div>
+
+    <div class="card">
+        <h3>Báo cáo và bảo dưỡng</h3>
+        <p>
+            Theo dõi doanh thu, lương tài xế
+            và thời hạn bảo dưỡng xe.
+        </p>
+
+        <a class="btn btn-primary"
+           href="{{ url_for('doanh_thu.doanh_thu') }}">
+            Xem doanh thu
+        </a>
+
+        <a class="btn btn-primary"
+           href="{{ url_for('luong.bao_cao_luong') }}">
+            Xem lương tài xế
+        </a>
+
+        <a class="btn btn-primary"
+           href="{{ url_for('bao_duong.danh_sach') }}">
+            Xem hạn bảo dưỡng
+        </a>
+    </div>
+
+</div>
+
+{% endblock %}

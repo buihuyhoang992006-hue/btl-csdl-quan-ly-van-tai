@@ -1,0 +1,71 @@
+
+{% extends "base.html" %}
+
+{% block title %}Báo cáo doanh thu{% endblock %}
+
+{% block content %}
+<h1>Báo cáo doanh thu theo xe</h1>
+
+<form method="get" action="{{ url_for('doanh_thu.doanh_thu') }}">
+    <div>
+        <label for="tu_ngay">Từ ngày:</label>
+        <input
+            type="date"
+            id="tu_ngay"
+            name="tu_ngay"
+            value="{{ tu_ngay }}"
+            required
+        >
+    </div>
+
+    <div>
+        <label for="den_ngay">Đến ngày:</label>
+        <input
+            type="date"
+            id="den_ngay"
+            name="den_ngay"
+            value="{{ den_ngay }}"
+            required
+        >
+    </div>
+
+    <button type="submit">Thống kê</button>
+</form>
+
+{% if loi %}
+    <p role="alert">{{ loi }}</p>
+{% endif %}
+
+{% if da_loc %}
+    {% if danh_sach_doanh_thu %}
+        <div style="overflow-x: auto;">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Biển số</th>
+                        <th>Số chuyến</th>
+                        <th>Tổng khách</th>
+                        <th>Doanh thu</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for xe in danh_sach_doanh_thu %}
+                        <tr>
+                            <td>{{ xe.bien_so }}</td>
+                            <td>{{ xe.so_chuyen }}</td>
+                            <td>{{ xe.tong_khach }}</td>
+                            <td>
+                                {{ "{:,.0f}".format(xe.doanh_thu) }} đ
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p>Không có dữ liệu xe trong hệ thống.</p>
+    {% endif %}
+{% endif %}
+
+{% endblock %}

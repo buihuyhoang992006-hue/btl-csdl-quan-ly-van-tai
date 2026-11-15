@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Lịch chuyến sắp chạy' if loc_lich else 'Quản lý chuyến xe' }}{% endblock %}
+
+{% block content %}
+<h1>{{ 'Lịch chuyến sắp chạy' if loc_lich else 'Quản lý chuyến xe' }}</h1>
+
+<p>
+    <a class="btn btn-primary" href="{{ url_for('chuyen_xe.them') }}">Lập chuyến</a>
+    {% if loc_lich %}
+        <a class="btn btn-secondary" href="{{ url_for('chuyen_xe.danh_sach') }}">
+            Tất cả chuyến
+        </a>
+    {% else %}
+        <a class="btn btn-secondary" href="{{ url_for('chuyen_xe.danh_sach', lich=1) }}">
+            Lịch chuyến sắp chạy
+        </a>
+    {% endif %}
+</p>
+
+<form method="get" action="{{ url_for('chuyen_xe.danh_sach') }}" class="mb-3">
+    {% if loc_lich %}
+        <input type="hidden" name="lich" value="1">
+    {% endif %}
+
+    <label for="ngay">Ngày chạy</label>
+    <input type="date" id="ngay" name="ngay" value="{{ ngay_nhap }}"
+           {% if loc_lich %}min="{{ hom_nay }}"{% endif %}>
+    <button class="btn btn-secondary" type="submit">Lọc</button>
+    <a href="{{ url_for('chuyen_xe.danh_sach', lich=1 if loc_lich else none) }}">
+        Bỏ lọc ngày
+    </a>
+</form>
+
+{% if loi %}
+    <p role="alert">{{ loi }}</p>
+{% elif not danh_sach %}
+    <p>Không có chuyến xe phù hợp.</p>
+{% else %}
+    <div style="overflow-x: auto;">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th scope="col">Mã chuyến</th>
+                    <th scope="col">Ngày chạy</th>
+                    <th scope="col">Biển số</th>
+                    <th scope="col">Tuyến</th>
+                    <th scope="col">Lái xe / Phụ xe</th>
+                    <th scope="col">Số khách</th>
+                    <th scope="col">Giá vé</th>
+                    <th scope="col">Trạng thái</th>
+                    <th scope="col">Thao tác</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for c in danh_sach %}
+                    <tr>
+                        <th scope="row">{{ c.ma_chuyen }}</th>
+                        <td>{{ c.ngay_chay.strftime('%d/%m/%Y') }}</td>
+                        <td>{{ c.bien_so }}</td>
+                        <td>{{ c.diem_dau }} → {{ c.diem_cuoi }}</td>
+                        <td>{{ c.ten_lai_xe }}<br>{{ c.ten_phu_xe }}</td>
+                        <td>{{ c.so_khach }}</td>
+                        <td>{{ '{:,}'.format(c.gia_ve|int).replace(',', '.') }} đ</td>
+                        <td>
+                            {{ nhan_trang_thai[c.trang_thai] }}
+                            {% if c.trang_thai == 'HOAN_THANH' %}
+                                <br>
+                                <small>{{ c.do_dai_km_chot }} km · Độ khó {{ c.do_phuc_tap_chot }}</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if c.trang_thai == 'DA_LEN_LICH' %}
+                                <a href="{{ url_for('chuyen_xe.sua', ma_chuyen=c.ma_chuyen) }}">Sửa</a>
+                                <br>
+                                <a href="{{ url_for('chuyen_xe.hoan_thanh', ma_chuyen=c.ma_chuyen) }}">
+                                    Hoàn thành
+                                </a>
+                                <form method="post"
+                                      action="{{ url_for('chuyen_xe.huy', ma_chuyen=c.ma_chuyen) }}"
+                                      onsubmit="return confirm('Bạn có muốn hủy chuyến này?');">
+                                    <button class="btn btn-danger" type="submit">Hủy chuyến</button>
+                                </form>
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endif %}
+{% endblock %}

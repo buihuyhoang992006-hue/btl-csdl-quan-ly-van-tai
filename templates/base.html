@@ -1,0 +1,119 @@
+
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>{% block title %}Quản lý vận tải{% endblock %}</title>
+
+    <!-- Nạp file CSS dùng chung -->
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+
+    <div class="app-layout">
+
+        <!-- MENU BÊN TRÁI -->
+        <aside class="sidebar">
+
+            <a class="brand" href="{{ url_for('trang_chu') }}">
+                <span class="brand-icon">VT</span>
+                <span>
+                    <strong>QUẢN LÝ VẬN TẢI</strong>
+                    <small>Hệ thống nội bộ</small>
+                </span>
+            </a>
+
+            <p class="menu-label">ĐIỀU HƯỚNG</p>
+
+            <nav class="menu">
+
+                <a href="{{ url_for('trang_chu') }}"
+                   class="menu-item {{ 'active' if request.path == '/' else '' }}">
+                    Tổng quan
+                </a>
+
+                <a href="{{ url_for('xe.danh_sach') }}"
+                   class="menu-item {{ 'active' if request.path.startswith('/xe') else '' }}">
+                    Quản lý xe
+                </a>
+
+                <a href="{{ url_for('tuyen_xe.danh_sach') }}"
+                   class="menu-item {{ 'active' if request.path.startswith('/tuyen-xe') else '' }}">
+                    Quản lý tuyến xe
+                </a>
+
+                <a href="{{ url_for('tai_xe.danh_sach') }}"
+                   class="menu-item {% if request.blueprint == 'tai_xe' %}active{% endif %}">
+                    Quản lý tài xế
+                </a>
+
+                <a href="{{ url_for('chuyen_xe.danh_sach') }}"
+                   class="menu-item {{ 'active' if request.path.startswith('/chuyen-xe') else '' }}">
+                    Quản lý chuyến xe
+                </a>
+
+                <p class="menu-label">BÁO CÁO</p>
+
+                <a href="{{ url_for('doanh_thu.doanh_thu') }}"
+                   class="menu-item {{ 'active' if request.path.startswith('/bao-cao/doanh-thu') else '' }}">
+                    Doanh thu theo xe
+                </a>
+
+                <a href="{{ url_for('doanh_thu.thong_ke_tuyen') }}"
+                class="menu-item {{ 'active' if request.path == '/bao-cao/thong-ke-tuyen' else '' }}">
+                    Thống kê tuyến xe
+                </a>
+
+                <a href="{{ url_for('luong.bao_cao_luong') }}"
+                   class="menu-item {% if request.blueprint == 'luong' %}active{% endif %}">
+                    Lương tài xế
+                </a>
+
+                <a href="{{ url_for('bao_duong.danh_sach') }}"
+                   class="menu-item {{ 'active' if request.path.startswith('/bao-cao/bao-duong') else '' }}">
+                    Hạn bảo dưỡng
+                </a>
+
+            </nav>
+
+            <div class="sidebar-footer">
+                Project 5 - Flask & MySQL
+            </div>
+
+        </aside>
+
+        <!-- PHẦN BÊN PHẢI -->
+        <div class="app-main">
+
+            <!-- THANH TIÊU ĐỀ -->
+            <header class="topbar">
+                <div>
+                    <small>HỆ THỐNG QUẢN LÝ</small>
+                    <h2>Hãng vận tải hành khách đường dài</h2>
+                </div>
+
+                <span class="topbar-status">Nội bộ</span>
+            </header>
+
+            <!-- NỘI DUNG CỦA TỪNG TRANG -->
+            <main class="content">
+                {% block content %}
+                {% endblock %}
+            </main>
+
+            <!-- CHÂN TRANG -->
+            <footer class="footer">
+                Bài tập lớn Cơ sở dữ liệu - Project 5
+            </footer>
+
+        </div>
+
+    </div>
+
+</body>
+</html>
