@@ -157,8 +157,11 @@ def luu_chuyen(cursor, du_lieu, hanh_dong, ma_chuyen, form, chuyen):
     if hanh_dong == "hoan_thanh":
         du_lieu.update({ten: chuyen[ten] for ten in CAC_MA_LIEN_KET})
 
-    # Cùng khóa dòng xe như chức năng sửa số ghế của TV1.
-    cursor.execute("SELECT so_ghe FROM xe WHERE ma_xe = %s FOR UPDATE", (du_lieu["ma_xe"],))
+    # Khóa cùng dòng xe với thao tác sửa thông tin xe.
+    cursor.execute(
+        "SELECT so_ghe, ngay_dua_vao_su_dung FROM xe WHERE ma_xe = %s FOR UPDATE",
+        (du_lieu["ma_xe"],),
+    )
     xe = cursor.fetchone()
 
     if ma_chuyen is not None:
@@ -184,8 +187,12 @@ def luu_chuyen(cursor, du_lieu, hanh_dong, ma_chuyen, form, chuyen):
     loi = {}
     if xe is None:
         loi["ma_xe"] = "Xe đã chọn không còn trong danh mục."
-    elif du_lieu["so_khach"] > xe["so_ghe"] - 2:
-        loi["so_khach"] = f"Xe này chở tối đa {xe['so_ghe'] - 2} khách."
+    else:
+        if du_lieu["so_khach"] > xe["so_ghe"] - 2:
+            loi["so_khach"] = f"Xe này chở tối đa {xe['so_ghe'] - 2} khách."
+        ngay_su_dung = xe["ngay_dua_vao_su_dung"]
+        if du_lieu["ngay_chay"] < ngay_su_dung:
+            loi["ngay_chay"] = f"Ngày chạy phải từ ngày xe đưa vào sử dụng ({ngay_su_dung:%d/%m/%Y}) trở đi."
 
     if tuyen is None:
         loi["ma_tuyen"] = "Tuyến đã chọn không còn trong danh mục."

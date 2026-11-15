@@ -62,6 +62,8 @@ def kiem_tra_tai_xe(form, hom_nay):
             loi[cot] = "Hãy nhập thông tin này."
         elif len(gia_tri) > so_ky_tu:
             loi[cot] = f"Nhập tối đa {so_ky_tu} ký tự."
+        elif cot == "cmt_cccd" and not (gia_tri.isascii() and gia_tri.isdecimal()):
+            loi[cot] = "Số CMT/CCCD chỉ được gồm các chữ số từ 0 đến 9."
         else:
             tai_xe[cot] = gia_tri
 
