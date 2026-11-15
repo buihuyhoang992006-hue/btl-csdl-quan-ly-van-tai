@@ -339,8 +339,9 @@ ORDER BY t.ma_tuyen;
 -- TV3: BAO CAO LUONG TAI XE THEO THANG
 -- =====================================================
 
-SET @thang = '2026-11-01';
-SET @ngay_gioi_han = '2026-11-11';
+-- Mặc định tính từ đầu tháng đến ngày hiện tại theo giờ Việt Nam (UTC+7).
+SET @ngay_gioi_han = DATE(UTC_TIMESTAMP() + INTERVAL 7 HOUR);
+SET @thang = DATE_SUB(@ngay_gioi_han, INTERVAL (DAYOFMONTH(@ngay_gioi_han) - 1) DAY);
 
 SELECT
     tx.ma_tai_xe,
@@ -394,8 +395,10 @@ ORDER BY tx.ho_ten, tx.ma_tai_xe;
 -- TV5: BAO CAO HAN BAO DUONG XE
 -- =====================================================
 
-SET @ngay_xem = '2026-11-11';
+SET @ngay_xem = DATE(UTC_TIMESTAMP() + INTERVAL 7 HOUR);
 
+DROP TEMPORARY TABLE IF EXISTS tmp_project5_han_bao_duong;
+CREATE TEMPORARY TABLE tmp_project5_han_bao_duong AS
 SELECT
     k.ma_xe,
     k.bien_so,
@@ -439,6 +442,20 @@ FROM (
         x.ma_xe,
         x.bien_so,
         x.ngay_bao_duong_cuoi
-) AS k
+) AS k;
 
-ORDER BY ngay_den_han, k.bien_so;
+-- Danh sách xe còn hạn hoặc đến hạn hôm nay.
+SELECT ma_xe, bien_so, ngay_bao_duong_cuoi, tong_km_quy_doi,
+       chu_ky_ngay, ngay_den_han
+FROM tmp_project5_han_bao_duong
+WHERE ngay_den_han >= @ngay_xem
+ORDER BY ngay_den_han, bien_so;
+
+-- Danh sách xe quá hạn bảo dưỡng.
+SELECT ma_xe, bien_so, ngay_bao_duong_cuoi, tong_km_quy_doi,
+       chu_ky_ngay, ngay_den_han
+FROM tmp_project5_han_bao_duong
+WHERE ngay_den_han < @ngay_xem
+ORDER BY ngay_den_han, bien_so;
+
+DROP TEMPORARY TABLE tmp_project5_han_bao_duong;
