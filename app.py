@@ -1,3 +1,4 @@
+
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
 
@@ -26,17 +27,11 @@ from modules.bao_duong import (
 )
 
 
-# ==========================================
-# 1. KHOI TAO FLASK
-# ==========================================
-
+# KHOI TAO FLASK
 app = Flask(__name__)
 
 
-# ==========================================
-# 2. DANG KY BLUEPRINT
-# ==========================================
-
+# DANG KY BLUEPRINT
 app.register_blueprint(xe_bp)
 app.register_blueprint(tuyen_xe_bp)
 app.register_blueprint(doanh_thu_bp)
@@ -46,10 +41,7 @@ app.register_blueprint(tai_xe_bp)
 app.register_blueprint(luong_bp)
 
 
-# ==========================================
-# 3. TRANG CHU - DASHBOARD
-# ==========================================
-
+# TRANG CHU - DASHBOARD
 @app.route("/")
 def trang_chu():
 
@@ -72,7 +64,7 @@ def trang_chu():
                 conn.cursor(dictionary=True)
             ) as cursor:
 
-                # 3.1. Dem tong so xe
+                # Dem tong so xe
                 cursor.execute("""
                     SELECT COUNT(*) AS tong_xe
                     FROM xe
@@ -82,10 +74,9 @@ def trang_chu():
                     cursor.fetchone()["tong_xe"]
                 )
 
-                # 3.2. Kiem tra bang chuyen_xe
                 if co_bang_chuyen_xe(cursor):
 
-                    # 3.3. Dem chuyen trong ngay
+                    # Dem chuyen trong ngay
                     cursor.execute("""
                         SELECT COUNT(*) AS so_chuyen
                         FROM chuyen_xe
@@ -97,7 +88,7 @@ def trang_chu():
                         cursor.fetchone()["so_chuyen"]
                     )
 
-                    # 3.4. Tinh so xe qua han bao duong
+                    # Dung chung cong thuc bao duong
                     danh_sach = lay_bao_cao(
                         cursor, hom_nay
                     )
@@ -116,13 +107,9 @@ def trang_chu():
                     )
 
     except Error:
-        app.logger.exception(
-            "Khong lay duoc du lieu Dashboard"
-        )
-
+        app.logger.exception("Loi Dashboard")
         thong_bao.append(
-            "Không tải được đầy đủ số liệu MySQL. "
-            "Hãy kiểm tra các bảng dữ liệu."
+            "Không tải được đầy đủ số liệu MySQL."
         )
 
     return render_template(
@@ -132,10 +119,6 @@ def trang_chu():
         hom_nay=hom_nay
     )
 
-
-# ==========================================
-# 4. CHAY UNG DUNG
-# ==========================================
 
 if __name__ == "__main__":
     app.run(debug=True)
