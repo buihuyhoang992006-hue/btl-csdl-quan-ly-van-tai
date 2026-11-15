@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+
+{% block title %}Danh sách tài xế{% endblock %}
+
+{% block content %}
+<h1>Danh sách tài xế</h1>
+<p><a class="btn btn-primary" href="{{ url_for('tai_xe.them') }}">Thêm tài xế</a></p>
+
+{% if loi %}
+    <p class="text-danger" role="alert">{{ loi }}</p>
+{% elif danh_sach_tai_xe %}
+    <div style="overflow-x: auto;">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th scope="col">Họ tên</th>
+                    <th scope="col">CMT/CCCD</th>
+                    <th scope="col">Mã bằng lái</th>
+                    <th scope="col">Loại bằng</th>
+                    <th scope="col">Ngày sinh</th>
+                    <th scope="col">Bắt đầu lái xe</th>
+                    <th scope="col">Thâm niên</th>
+                    <th scope="col">Địa chỉ</th>
+                    <th scope="col">Thao tác</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for tx in danh_sach_tai_xe %}
+                    <tr>
+                        <th scope="row">{{ tx.ho_ten }}</th>
+                        <td>{{ tx.cmt_cccd }}</td>
+                        <td>{{ tx.ma_bang_lai }}</td>
+                        <td>{{ tx.loai_bang_lai }}</td>
+                        <td>{{ tx.ngay_sinh.strftime('%d/%m/%Y') }}</td>
+                        <td>{{ tx.ngay_bat_dau_lai_xe.strftime('%d/%m/%Y') }}</td>
+                        <td>{{ tx.tham_nien }} năm</td>
+                        <td>{{ tx.dia_chi }}</td>
+                        <td>
+                            <a href="{{ url_for('tai_xe.sua', ma_tai_xe=tx.ma_tai_xe) }}">Sửa</a>
+                            <a class="text-danger" href="{{ url_for('tai_xe.xoa', ma_tai_xe=tx.ma_tai_xe) }}">Xóa</a>
+                            <a href="{{ url_for('tai_xe.lich_su', ma_tai_xe=tx.ma_tai_xe) }}">Lịch sử phân công</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <p>Chưa có tài xế trong hệ thống.</p>
+{% endif %}
+{% endblock %}

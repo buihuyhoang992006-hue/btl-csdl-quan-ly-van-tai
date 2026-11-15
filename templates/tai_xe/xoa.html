@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+
+{% block title %}Xóa tài xế{% endblock %}
+
+{% block content %}
+<h1>Xóa tài xế</h1>
+
+{% if loi %}
+    <p class="text-danger" role="alert">{{ loi }}</p>
+{% elif chuyen %}
+    <p class="text-danger" role="alert">
+        Tài xế <strong>{{ tai_xe.ho_ten }}</strong> đã được phân công trong chuyến {{ chuyen.ma_chuyen }}
+        nên không thể xóa.
+    </p>
+{% else %}
+    <p>Bạn muốn xóa tài xế <strong>{{ tai_xe.ho_ten }}</strong> (CCCD: {{ tai_xe.cmt_cccd }})?</p>
+    <form method="post" action="{{ url_for('tai_xe.xoa', ma_tai_xe=ma_tai_xe) }}">
+        <button class="btn btn-danger" type="submit">Xác nhận xóa</button>
+    </form>
+{% endif %}
+
+<a class="btn btn-secondary" href="{{ url_for('tai_xe.danh_sach') }}">Quay lại danh sách</a>
+{% endblock %}

@@ -6,8 +6,20 @@ from flask import Flask, render_template
 from mysql.connector import Error
 
 from db import get_connection
+
+# TV1 - Quan ly xe
 from modules.xe import bp as xe_bp
 
+# TV2 - Quan ly tuyen va bao cao doanh thu
+from modules.tuyen_xe import bp as tuyen_xe_bp
+from modules.bao_cao import bp as doanh_thu_bp
+
+# TV4 - Quan ly chuyen xe
+from modules.chuyenxe import bp as chuyen_xe_bp
+from modules.tai_xe import bp as tai_xe_bp
+from modules.luong import bp as luong_bp
+
+# TV5 - Bao duong xe
 from modules.bao_duong import (
     bp as bao_duong_bp,
     lay_bao_cao,
@@ -18,15 +30,22 @@ from modules.bao_duong import (
 # KHOI TAO FLASK
 app = Flask(__name__)
 
+
 # DANG KY BLUEPRINT
 app.register_blueprint(xe_bp)
+app.register_blueprint(tuyen_xe_bp)
+app.register_blueprint(doanh_thu_bp)
+app.register_blueprint(chuyen_xe_bp)
 app.register_blueprint(bao_duong_bp)
+app.register_blueprint(tai_xe_bp)
+app.register_blueprint(luong_bp)
 
 
 # TRANG CHU - DASHBOARD
 @app.route("/")
 def trang_chu():
 
+    # Lay ngay hien tai theo gio Viet Nam
     hom_nay = datetime.now(
         timezone(timedelta(hours=7))
     ).date()

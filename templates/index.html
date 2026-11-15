@@ -14,7 +14,6 @@ Trang chủ - Quản lý vận tải
     hãng vận tải hành khách đường dài.
 </p>
 
-
 <!-- THONG KE DASHBOARD -->
 
 <div class="dashboard-stats">
@@ -97,7 +96,10 @@ Trang chủ - Quản lý vận tải
             điểm đi, điểm đến và độ dài tuyến.
         </p>
 
-        <p><em>Chờ tích hợp chức năng</em></p>
+        <a class="btn btn-primary"
+           href="{{ url_for('tuyen_xe.danh_sach') }}">
+            Xem danh sách tuyến xe
+        </a>
     </div>
 
     <div class="card">
@@ -107,7 +109,10 @@ Trang chủ - Quản lý vận tải
             tài xế và cập nhật trạng thái.
         </p>
 
-        <p><em>Chờ tích hợp chức năng</em></p>
+        <a class="btn btn-primary"
+           href="{{ url_for('chuyen_xe.danh_sach') }}">
+            Xem danh sách chuyến xe
+        </a>
     </div>
 
     <div class="card">
@@ -117,7 +122,20 @@ Trang chủ - Quản lý vận tải
             và thời hạn bảo dưỡng xe.
         </p>
 
-        <p><em>Chức năng đang phát triển</em></p>
+        <a class="btn btn-primary"
+           href="{{ url_for('doanh_thu.doanh_thu') }}">
+            Xem doanh thu
+        </a>
+
+        <a class="btn btn-primary"
+           href="{{ url_for('luong.bao_cao_luong') }}">
+            Xem lương tài xế
+        </a>
+
+        <a class="btn btn-primary"
+           href="{{ url_for('bao_duong.danh_sach') }}">
+            Xem hạn bảo dưỡng
+        </a>
     </div>
 
 </div>

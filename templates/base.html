@@ -42,35 +42,37 @@
                     Quản lý xe
                 </a>
 
-                <!-- Chờ tích hợp Blueprint các thành viên -->
-                <span class="menu-item disabled">
+                <a href="{{ url_for('tuyen_xe.danh_sach') }}"
+                   class="menu-item {{ 'active' if request.path.startswith('/tuyen-xe') else '' }}">
                     Quản lý tuyến xe
-                </span>
+                </a>
 
-                <span class="menu-item disabled">
+                <a href="{{ url_for('tai_xe.danh_sach') }}"
+                   class="menu-item {% if request.blueprint == 'tai_xe' %}active{% endif %}">
                     Quản lý tài xế
-                </span>
+                </a>
 
-                <span class="menu-item disabled">
+                <a href="{{ url_for('chuyen_xe.danh_sach') }}"
+                   class="menu-item {{ 'active' if request.path.startswith('/chuyen-xe') else '' }}">
                     Quản lý chuyến xe
-                </span>
+                </a>
 
                 <p class="menu-label">BÁO CÁO</p>
 
-                <span class="menu-item disabled">
+                <a href="{{ url_for('doanh_thu.doanh_thu') }}"
+                   class="menu-item {{ 'active' if request.path.startswith('/bao-cao/doanh-thu') else '' }}">
                     Doanh thu theo xe
-                </span>
-
-                <span class="menu-item disabled">
-                    Lương tài xế
-                </span>
-
-                
-                <a href="{{ url_for('bao_duong.danh_sach') }}"
-                class="menu-item {{ 'active' if request.path.startswith('/bao-cao/bao-duong') else '' }}">
-                    Hạn bảo dưỡng
                 </a>
 
+                <a href="{{ url_for('luong.bao_cao_luong') }}"
+                   class="menu-item {% if request.blueprint == 'luong' %}active{% endif %}">
+                    Lương tài xế
+                </a>
+
+                <a href="{{ url_for('bao_duong.danh_sach') }}"
+                   class="menu-item {{ 'active' if request.path.startswith('/bao-cao/bao-duong') else '' }}">
+                    Hạn bảo dưỡng
+                </a>
 
             </nav>
 
