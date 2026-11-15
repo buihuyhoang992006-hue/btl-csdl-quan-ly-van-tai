@@ -1,0 +1,4544 @@
+﻿
+==================== FILE: chaythu\taixedemo.sql ====================
+
+-- DÃ¹ng trÃªn schema kiá»ƒm thá»­ khi chÆ°a cÃ³ SQL cá»§a TV3.
+CREATE TABLE IF NOT EXISTS tai_xe (
+    ma_tai_xe INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    ho_ten VARCHAR(100) NOT NULL,
+    cmt_cccd VARCHAR(20) NOT NULL UNIQUE,
+    ma_bang_lai VARCHAR(30) NOT NULL UNIQUE,
+    loai_bang_lai VARCHAR(20) NOT NULL,
+    dia_chi VARCHAR(255) NOT NULL,
+    ngay_sinh DATE NOT NULL,
+    ngay_bat_dau_lai_xe DATE NOT NULL,
+    CHECK (ngay_bat_dau_lai_xe > ngay_sinh)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+INSERT INTO tai_xe (
+    ho_ten, cmt_cccd, ma_bang_lai, loai_bang_lai, dia_chi,
+    ngay_sinh, ngay_bat_dau_lai_xe
+) VALUES
+    ('Nguyá»…n VÄƒn LÃ¡i', '000000000401', 'DEMO-TV4-401', 'D', 'HÃ  Ná»™i', '1985-03-10', '2009-06-01'),
+    ('Tráº§n VÄƒn Phá»¥', '000000000402', 'DEMO-TV4-402', 'D', 'HÃ  Ná»™i', '1990-08-20', '2012-07-01')
+ON DUPLICATE KEY UPDATE ma_tai_xe = tai_xe.ma_tai_xe;
+
+
+==================== FILE: modules\bao_cao.py ====================
+
+
+from contextlib import closing
+from datetime import datetime
+
+from flask import Blueprint, render_template, request
+from mysql.connector import Error
+
+from db import get_connection
+
+
+bp = Blueprint("doanh_thu", __name__, url_prefix="/bao-cao")
+
+
+@bp.route("/doanh-thu", methods=["GET"])
+def doanh_thu():
+    tu_ngay = request.args.get("tu_ngay", "").strip()
+    den_ngay = request.args.get("den_ngay", "").strip()
+
+    danh_sach_doanh_thu = []
+    loi = None
+    da_loc = False
+
+    if tu_ngay or den_ngay:
+        try:
+            if not tu_ngay or not den_ngay:
+                raise ValueError
+
+            ngay_bat_dau = datetime.strptime(tu_ngay, "%Y-%m-%d").date()
+            ngay_ket_thuc = datetime.strptime(den_ngay, "%Y-%m-%d").date()
+
+            if ngay_bat_dau > ngay_ket_thuc:
+                loi = "NgÃ y báº¯t Ä‘áº§u khÃ´ng Ä‘Æ°á»£c sau ngÃ y káº¿t thÃºc."
+            else:
+                sql = """
+                    SELECT
+                        x.ma_xe,
+                        x.bien_so,
+                        COUNT(c.ma_chuyen) AS so_chuyen,
+                        COALESCE(SUM(c.so_khach), 0) AS tong_khach,
+                        COALESCE(SUM(c.so_khach * c.gia_ve), 0) AS doanh_thu
+                    FROM xe x
+                    LEFT JOIN chuyen_xe c
+                        ON x.ma_xe = c.ma_xe
+                        AND c.trang_thai = 'HOAN_THANH'
+                        AND c.ngay_chay BETWEEN %s AND %s
+                    GROUP BY x.ma_xe, x.bien_so
+                    ORDER BY x.bien_so
+                """
+
+                with closing(get_connection()) as conn:
+                    with closing(conn.cursor(dictionary=True)) as cursor:
+                        cursor.execute(
+                            sql,
+                            (ngay_bat_dau, ngay_ket_thuc)
+                        )
+                        danh_sach_doanh_thu = cursor.fetchall()
+
+                da_loc = True
+
+        except ValueError:
+            loi = "Vui lÃ²ng nháº­p ngÃ y há»£p lá»‡ vÃ  Ä‘áº§y Ä‘á»§."
+
+        except Error:
+            loi = "KhÃ´ng thá»ƒ truy xuáº¥t dá»¯ liá»‡u doanh thu."
+
+    return render_template(
+        "bao_cao/doanh_thu.html",
+        danh_sach_doanh_thu=danh_sach_doanh_thu,
+        tu_ngay=tu_ngay,
+        den_ngay=den_ngay,
+        loi=loi,
+        da_loc=da_loc
+    )
+
+from datetime import datetime
+
+
+@bp.route("/thong-ke-tuyen", methods=["GET"])
+def thong_ke_tuyen():
+    # Láº¥y thÃ¡ng cáº§n thá»‘ng kÃª, máº·c Ä‘á»‹nh lÃ  thÃ¡ng hiá»‡n táº¡i
+    thang = request.args.get(
+        "thang",
+        datetime.now().strftime("%Y-%m")
+    )
+
+    try:
+        ngay_dau = datetime.strptime(thang, "%Y-%m").date()
+    except ValueError:
+        ngay_dau = datetime.now().date().replace(day=1)
+        thang = ngay_dau.strftime("%Y-%m")
+
+    conn = get_connection()
+    cursor = conn.cursor(dictionary=True)
+
+    sql = """
+        SELECT
+            t.ma_tuyen,
+            t.diem_dau,
+            t.diem_cuoi,
+            t.do_dai_km,
+            COUNT(c.ma_chuyen) AS so_chuyen,
+            COALESCE(SUM(c.so_khach), 0) AS tong_khach
+        FROM tuyen_xe t
+        LEFT JOIN chuyen_xe c
+            ON t.ma_tuyen = c.ma_tuyen
+            AND c.trang_thai = 'HOAN_THANH'
+            AND c.ngay_chay >= %s
+            AND c.ngay_chay < DATE_ADD(%s, INTERVAL 1 MONTH)
+        GROUP BY
+            t.ma_tuyen,
+            t.diem_dau,
+            t.diem_cuoi,
+            t.do_dai_km
+        ORDER BY t.ma_tuyen
+    """
+
+    cursor.execute(sql, (ngay_dau, ngay_dau))
+    ds_tuyen = cursor.fetchall()
+
+    cursor.close()
+    conn.close()
+
+    return render_template(
+        "bao_cao/thong_ke_tuyen.html",
+        ds_tuyen=ds_tuyen,
+        thang=thang
+    )
+
+
+==================== FILE: modules\bao_duong.py ====================
+
+
+from contextlib import closing
+from datetime import date, datetime, timedelta, timezone
+
+from flask import (
+    Blueprint, abort, current_app, redirect,
+    render_template, request, url_for
+)
+from mysql.connector import Error
+from db import get_connection
+
+
+# 1. KHAI BAO BLUEPRINT
+bp = Blueprint(
+    "bao_duong",
+    __name__,
+    url_prefix="/bao-cao/bao-duong"
+)
+
+
+# 2. LAY NGAY HIEN TAI THEO GIO VIET NAM
+def hom_nay_vn():
+    return datetime.now(
+        timezone(timedelta(hours=7))
+    ).date()
+
+
+# 3. KIEM TRA BANG CHUYEN XE
+def co_bang_chuyen_xe(cursor):
+    cursor.execute("""
+        SELECT COUNT(*) AS so_bang
+        FROM information_schema.tables
+        WHERE table_schema = DATABASE()
+          AND table_name = 'chuyen_xe'
+    """)
+    return cursor.fetchone()["so_bang"] > 0
+
+
+# 4. SQL TINH HAN BAO DUONG
+SQL_BAO_DUONG = """
+SELECT
+    k.ma_xe,
+    k.bien_so,
+    k.ngay_bao_duong_cuoi,
+    k.tong_km_quy_doi,
+
+    GREATEST(
+        0, 360 - FLOOR(k.tong_km_quy_doi / 100)
+    ) AS chu_ky_ngay,
+
+    DATE_ADD(
+        k.ngay_bao_duong_cuoi,
+        INTERVAL GREATEST(
+            0, 360 - FLOOR(k.tong_km_quy_doi / 100)
+        ) DAY
+    ) AS ngay_den_han
+
+FROM (
+    SELECT
+        x.ma_xe,
+        x.bien_so,
+        x.ngay_bao_duong_cuoi,
+
+        COALESCE(SUM(
+            c.do_dai_km_chot *
+            CASE c.do_phuc_tap_chot
+                WHEN 1 THEN 1.00
+                WHEN 2 THEN 1.25
+                WHEN 3 THEN 1.50
+                ELSE 0
+            END
+        ), 0) AS tong_km_quy_doi
+
+    FROM xe x
+    LEFT JOIN chuyen_xe c
+        ON c.ma_xe = x.ma_xe
+       AND c.trang_thai = 'HOAN_THANH'
+       AND c.ngay_chay > x.ngay_bao_duong_cuoi
+       AND c.ngay_chay <= %s
+
+    GROUP BY
+        x.ma_xe,
+        x.bien_so,
+        x.ngay_bao_duong_cuoi
+) AS k
+
+ORDER BY ngay_den_han, k.bien_so
+"""
+
+
+# 5. HAM LAY BAO CAO
+def lay_bao_cao(cursor, ngay_xem):
+    cursor.execute(SQL_BAO_DUONG, (ngay_xem,))
+    return cursor.fetchall()
+
+
+# 6. TRANG DANH SACH BAO DUONG
+@bp.get("")
+def danh_sach():
+    ngay_xem = hom_nay_vn()
+
+    qua_han = []
+    den_han = []
+    con_han = []
+    xe_cho_du_lieu = []
+    thong_bao = None
+    loi = None
+
+    try:
+        with closing(get_connection()) as conn:
+            with closing(
+                conn.cursor(dictionary=True)
+            ) as cursor:
+
+                if co_bang_chuyen_xe(cursor):
+
+                    danh_sach_xe = lay_bao_cao(
+                        cursor, ngay_xem
+                    )
+
+                    for xe in danh_sach_xe:
+
+                        if xe["ngay_den_han"] < ngay_xem:
+                            qua_han.append(xe)
+
+                        elif xe["ngay_den_han"] == ngay_xem:
+                            den_han.append(xe)
+
+                        else:
+                            con_han.append(xe)
+
+                else:
+                    thong_bao = (
+                        "ChÆ°a cÃ³ báº£ng chuyen_xe. "
+                        "ChÆ°a thá»ƒ tÃ­nh háº¡n báº£o dÆ°á»¡ng, "
+                        "nhÆ°ng váº«n cÃ³ thá»ƒ cáº­p nháº­t ngÃ y "
+                        "báº£o dÆ°á»¡ng cá»§a tá»«ng xe."
+                    )
+
+                    cursor.execute("""
+                        SELECT
+                            ma_xe,
+                            bien_so,
+                            ngay_bao_duong_cuoi
+                        FROM xe
+                        ORDER BY bien_so
+                    """)
+
+                    xe_cho_du_lieu = cursor.fetchall()
+
+    except Error:
+        current_app.logger.exception(
+            "Loi truy van bao duong"
+        )
+        loi = "KhÃ´ng táº£i Ä‘Æ°á»£c dá»¯ liá»‡u báº£o dÆ°á»¡ng tá»« MySQL."
+
+    return render_template(
+        "bao_duong/index.html",
+        qua_han=qua_han,
+        den_han=den_han,
+        con_han=con_han,
+        xe_cho_du_lieu=xe_cho_du_lieu,
+        thong_bao=thong_bao,
+        loi=loi,
+        ngay_xem=ngay_xem
+    ), (503 if loi else 200)
+
+
+# 7. CAP NHAT NGAY BAO DUONG
+@bp.route(
+    "/<int:ma_xe>/cap-nhat",
+    methods=["GET", "POST"]
+)
+def cap_nhat(ma_xe):
+    hom_nay = hom_nay_vn()
+    loi = None
+    ngay_nhap = request.form.get(
+        "ngay_bao_duong_moi", ""
+    )
+
+    try:
+        with closing(get_connection()) as conn:
+
+            if request.method == "POST":
+                conn.start_transaction()
+
+            with closing(
+                conn.cursor(dictionary=True, buffered=True)
+            ) as cursor:
+
+                sql = """
+                    SELECT
+                        ma_xe,
+                        bien_so,
+                        ngay_bao_duong_cuoi
+                    FROM xe
+                    WHERE ma_xe = %s
+                """
+
+                if request.method == "POST":
+                    sql += " FOR UPDATE"
+
+                cursor.execute(sql, (ma_xe,))
+                xe = cursor.fetchone()
+
+                if xe is None:
+                    abort(404, "KhÃ´ng tÃ¬m tháº¥y xe.")
+
+                if request.method == "POST":
+
+                    try:
+                        ngay_moi = date.fromisoformat(
+                            ngay_nhap
+                        )
+                    except ValueError:
+                        loi = "NgÃ y nháº­p khÃ´ng há»£p lá»‡."
+                    else:
+                        if ngay_moi < xe["ngay_bao_duong_cuoi"]:
+                            loi = (
+                                "NgÃ y má»›i khÃ´ng Ä‘Æ°á»£c trÆ°á»›c "
+                                "ngÃ y báº£o dÆ°á»¡ng cuá»‘i."
+                            )
+                        elif ngay_moi > hom_nay:
+                            loi = (
+                                "NgÃ y báº£o dÆ°á»¡ng khÃ´ng Ä‘Æ°á»£c "
+                                "sau hÃ´m nay."
+                            )
+
+                    if loi is None:
+                        cursor.execute("""
+                            UPDATE xe
+                            SET ngay_bao_duong_cuoi = %s
+                            WHERE ma_xe = %s
+                        """, (ngay_moi, ma_xe))
+
+                        conn.commit()
+
+                        return redirect(
+                            url_for(
+                                "bao_duong.danh_sach",
+                                saved=1
+                            ),
+                            code=303
+                        )
+
+                    conn.rollback()
+
+                    return render_template(
+                        "bao_duong/cap_nhat.html",
+                        xe=xe,
+                        hom_nay=hom_nay,
+                        ngay_nhap=ngay_nhap,
+                        loi=loi
+                    ), 400
+
+    except Error:
+        current_app.logger.exception(
+            "Loi cap nhat bao duong"
+        )
+        return render_template(
+            "bao_duong/cap_nhat.html",
+            xe=None,
+            hom_nay=hom_nay,
+            ngay_nhap=ngay_nhap,
+            loi="KhÃ´ng thá»ƒ truy cáº­p MySQL."
+        ), 503
+
+    return render_template(
+        "bao_duong/cap_nhat.html",
+        xe=xe,
+        hom_nay=hom_nay,
+        ngay_nhap=ngay_nhap,
+        loi=loi
+    )
+
+
+==================== FILE: modules\chuyenxe.py ====================
+
+from contextlib import closing
+from datetime import date
+
+from flask import Blueprint, abort, current_app, redirect, render_template, request, url_for
+from mysql.connector import Error, errorcode
+
+from db import get_connection
+from modules.bao_duong import hom_nay_vn
+
+
+bp = Blueprint("chuyen_xe", __name__, url_prefix="/chuyen-xe")
+
+NHAN_TRANG_THAI = {
+    "DA_LEN_LICH": "ÄÃ£ lÃªn lá»‹ch",
+    "HOAN_THANH": "HoÃ n thÃ nh",
+    "DA_HUY": "ÄÃ£ há»§y",
+}
+CAC_MA_LIEN_KET = ("ma_xe", "ma_tuyen", "ma_lai_xe", "ma_phu_xe")
+
+TRUY_VAN_DANH_SACH = """
+    SELECT c.*, x.bien_so, t.diem_dau, t.diem_cuoi,
+           lai.ho_ten AS ten_lai_xe, phu.ho_ten AS ten_phu_xe
+    FROM chuyen_xe c
+    JOIN xe x ON x.ma_xe = c.ma_xe
+    JOIN tuyen_xe t ON t.ma_tuyen = c.ma_tuyen
+    JOIN tai_xe lai ON lai.ma_tai_xe = c.ma_lai_xe
+    JOIN tai_xe phu ON phu.ma_tai_xe = c.ma_phu_xe
+"""
+
+
+def doc_ngay(gia_tri):
+    try:
+        ngay = date.fromisoformat(gia_tri)
+    except ValueError:
+        return None
+    return ngay if ngay.isoformat() == gia_tri else None
+
+
+@bp.get("")
+def danh_sach():
+    hom_nay = hom_nay_vn()
+    loc_lich = request.args.get("lich") == "1"
+    ngay_nhap = request.args.get("ngay", "")
+    ngay = doc_ngay(ngay_nhap) if ngay_nhap else None
+
+    cac_dieu_kien = []
+    tham_so = []
+    if loc_lich:
+        cac_dieu_kien.append("c.trang_thai = 'DA_LEN_LICH' AND c.ngay_chay >= %s")
+        tham_so.append(hom_nay)
+    if ngay is not None:
+        cac_dieu_kien.append("c.ngay_chay = %s")
+        tham_so.append(ngay)
+
+    danh_sach_chuyen = []
+    loi = ""
+    ma_http = 200
+
+    if ngay_nhap and ngay is None:
+        loi, ma_http = "NgÃ y lá»c khÃ´ng há»£p lá»‡.", 400
+    elif loc_lich and ngay is not None and ngay < hom_nay:
+        loi, ma_http = "Chá»n ngÃ y tá»« hÃ´m nay Ä‘á»ƒ xem lá»‹ch sáº¯p cháº¡y.", 400
+    else:
+        cau_lenh = TRUY_VAN_DANH_SACH
+        if cac_dieu_kien:
+            cau_lenh += " WHERE " + " AND ".join(cac_dieu_kien)
+        if loc_lich:
+            cau_lenh += " ORDER BY c.ngay_chay ASC, c.ma_chuyen ASC"
+        else:
+            cau_lenh += " ORDER BY c.ngay_chay DESC, c.ma_chuyen DESC"
+        try:
+            with closing(get_connection()) as conn:
+                with closing(conn.cursor(dictionary=True)) as cursor:
+                    cursor.execute(cau_lenh, tuple(tham_so))
+                    danh_sach_chuyen = cursor.fetchall()
+        except Error:
+            current_app.logger.exception("KhÃ´ng táº£i Ä‘Æ°á»£c danh sÃ¡ch chuyáº¿n xe")
+            loi, ma_http = "KhÃ´ng táº£i Ä‘Æ°á»£c chuyáº¿n xe. Kiá»ƒm tra káº¿t ná»‘i vÃ  cÃ¡c báº£ng MySQL.", 503
+
+    return render_template(
+        "chuyenxe/index.html",
+        danh_sach=danh_sach_chuyen,
+        nhan_trang_thai=NHAN_TRANG_THAI,
+        loc_lich=loc_lich,
+        hom_nay=hom_nay.isoformat(),
+        ngay_nhap=ngay_nhap,
+        loi=loi,
+    ), ma_http
+
+
+def kiem_tra_form(form, hanh_dong, hom_nay):
+    du_lieu, loi = {}, {}
+
+    gioi_han = [
+        ("so_khach", 0, 65535, "Sá»‘ khÃ¡ch"),
+        ("gia_ve", 0, 999_999_999_999, "GiÃ¡ vÃ©"),
+    ]
+    if hanh_dong != "hoan_thanh":
+        gioi_han += [
+            ("ma_xe", 1, 4_294_967_295, "Xe"),
+            ("ma_tuyen", 1, 4_294_967_295, "Tuyáº¿n xe"),
+            ("ma_lai_xe", 1, 4_294_967_295, "LÃ¡i xe"),
+            ("ma_phu_xe", 1, 4_294_967_295, "Phá»¥ xe"),
+        ]
+
+    for ten, nho_nhat, lon_nhat, nhan in gioi_han:
+        raw = form.get(ten, "").strip()
+        if len(raw) <= 12 and raw.isascii() and raw.isdecimal():
+            gia_tri = int(raw)
+            if nho_nhat <= gia_tri <= lon_nhat:
+                du_lieu[ten] = gia_tri
+                continue
+        if ten in CAC_MA_LIEN_KET:
+            loi[ten] = f"Vui lÃ²ng chá»n {nhan.lower()}."
+        else:
+            loi[ten] = f"{nhan} pháº£i lÃ  sá»‘ nguyÃªn tá»« {nho_nhat:,} Ä‘áº¿n {lon_nhat:,}.".replace(",", ".")
+
+    if "ma_lai_xe" in du_lieu and du_lieu["ma_lai_xe"] == du_lieu.get("ma_phu_xe"):
+        loi["ma_phu_xe"] = "Phá»¥ xe pháº£i khÃ¡c lÃ¡i xe."
+
+    ngay = doc_ngay(form.get("ngay_chay", ""))
+    if ngay is None or ngay.year < 1000:
+        loi["ngay_chay"] = "Nháº­p ngÃ y cháº¡y há»£p lá»‡."
+    elif hanh_dong == "hoan_thanh" and ngay > hom_nay:
+        loi["ngay_chay"] = "NgÃ y cháº¡y thá»±c táº¿ khÃ´ng Ä‘Æ°á»£c sau hÃ´m nay."
+    else:
+        du_lieu["ngay_chay"] = ngay
+
+    return du_lieu, loi
+
+
+def doc_chuyen(cursor, ma_chuyen, *, khoa=False):
+    cau_lenh = "SELECT * FROM chuyen_xe WHERE ma_chuyen = %s"
+    if khoa:
+        cau_lenh += " FOR UPDATE"
+    cursor.execute(cau_lenh, (ma_chuyen,))
+    chuyen = cursor.fetchone()
+    if chuyen is None:
+        abort(404, description="KhÃ´ng tÃ¬m tháº¥y chuyáº¿n xe.")
+    if chuyen["trang_thai"] != "DA_LEN_LICH":
+        abort(409, description="Chuyáº¿n Ä‘Ã£ hoÃ n thÃ nh hoáº·c Ä‘Ã£ há»§y vÃ  chá»‰ dÃ¹ng Ä‘á»ƒ tra cá»©u.")
+    return chuyen
+
+
+def doc_danh_muc(cursor):
+    cursor.execute("SELECT ma_xe, bien_so, so_ghe FROM xe ORDER BY bien_so")
+    danh_sach_xe = cursor.fetchall()
+
+    cursor.execute("SELECT ma_tuyen, diem_dau, diem_cuoi FROM tuyen_xe ORDER BY diem_dau, diem_cuoi")
+    danh_sach_tuyen = cursor.fetchall()
+
+    cursor.execute("SELECT ma_tai_xe, ho_ten FROM tai_xe ORDER BY ho_ten, ma_tai_xe")
+    return {"xe": danh_sach_xe, "tuyen": danh_sach_tuyen, "tai_xe": cursor.fetchall()}
+
+
+def luu_chuyen(cursor, du_lieu, hanh_dong, ma_chuyen, form, chuyen):
+    if hanh_dong == "hoan_thanh":
+        du_lieu.update({ten: chuyen[ten] for ten in CAC_MA_LIEN_KET})
+
+    # CÃ¹ng khÃ³a dÃ²ng xe nhÆ° chá»©c nÄƒng sá»­a sá»‘ gháº¿ cá»§a TV1.
+    cursor.execute("SELECT so_ghe FROM xe WHERE ma_xe = %s FOR UPDATE", (du_lieu["ma_xe"],))
+    xe = cursor.fetchone()
+
+    if ma_chuyen is not None:
+        chuyen_moi = doc_chuyen(cursor, ma_chuyen, khoa=True)
+        if hanh_dong == "hoan_thanh" and any(
+            str(chuyen_moi[ten]) != form.get(ten) or chuyen_moi[ten] != du_lieu[ten]
+            for ten in CAC_MA_LIEN_KET
+        ):
+            return {"chung": "PhÃ¢n cÃ´ng Ä‘Ã£ thay Ä‘á»•i. Má»Ÿ láº¡i trang xÃ¡c nháº­n Ä‘á»ƒ kiá»ƒm tra."}, 409
+
+    cursor.execute(
+        "SELECT do_dai_km, do_phuc_tap FROM tuyen_xe WHERE ma_tuyen = %s FOR SHARE",
+        (du_lieu["ma_tuyen"],),
+    )
+    tuyen = cursor.fetchone()
+
+    cursor.execute(
+        "SELECT ma_tai_xe FROM tai_xe WHERE ma_tai_xe IN (%s, %s) FOR SHARE",
+        (du_lieu["ma_lai_xe"], du_lieu["ma_phu_xe"]),
+    )
+    ma_tai_xe = {dong["ma_tai_xe"] for dong in cursor.fetchall()}
+
+    loi = {}
+    if xe is None:
+        loi["ma_xe"] = "Xe Ä‘Ã£ chá»n khÃ´ng cÃ²n trong danh má»¥c."
+    elif du_lieu["so_khach"] > xe["so_ghe"] - 2:
+        loi["so_khach"] = f"Xe nÃ y chá»Ÿ tá»‘i Ä‘a {xe['so_ghe'] - 2} khÃ¡ch."
+
+    if tuyen is None:
+        loi["ma_tuyen"] = "Tuyáº¿n Ä‘Ã£ chá»n khÃ´ng cÃ²n trong danh má»¥c."
+
+    for ten in ("ma_lai_xe", "ma_phu_xe"):
+        if du_lieu[ten] not in ma_tai_xe:
+            loi[ten] = "TÃ i xáº¿ Ä‘Ã£ chá»n khÃ´ng cÃ²n trong danh má»¥c."
+
+    if loi:
+        return loi, 400
+
+    if hanh_dong == "them":
+        cursor.execute("""
+            INSERT INTO chuyen_xe (
+                ma_xe, ma_tuyen, ma_lai_xe, ma_phu_xe, ngay_chay, so_khach, gia_ve
+            ) VALUES (
+                %(ma_xe)s, %(ma_tuyen)s, %(ma_lai_xe)s, %(ma_phu_xe)s,
+                %(ngay_chay)s, %(so_khach)s, %(gia_ve)s
+            )
+        """, du_lieu)
+    elif hanh_dong == "sua":
+        cursor.execute("""
+            UPDATE chuyen_xe
+            SET ma_xe = %(ma_xe)s, ma_tuyen = %(ma_tuyen)s, ma_lai_xe = %(ma_lai_xe)s,
+                ma_phu_xe = %(ma_phu_xe)s, ngay_chay = %(ngay_chay)s,
+                so_khach = %(so_khach)s, gia_ve = %(gia_ve)s
+            WHERE ma_chuyen = %(ma_chuyen)s AND trang_thai = 'DA_LEN_LICH'
+        """, {**du_lieu, "ma_chuyen": ma_chuyen})
+    else:
+        cursor.execute("""
+            UPDATE chuyen_xe
+            SET ngay_chay = %(ngay_chay)s, so_khach = %(so_khach)s, gia_ve = %(gia_ve)s,
+                do_dai_km_chot = %(do_dai_km)s, do_phuc_tap_chot = %(do_phuc_tap)s,
+                trang_thai = 'HOAN_THANH'
+            WHERE ma_chuyen = %(ma_chuyen)s AND trang_thai = 'DA_LEN_LICH'
+        """, {**du_lieu, **tuyen, "ma_chuyen": ma_chuyen})
+
+    return {}, 200
+
+
+def xu_ly_form(hanh_dong, ma_chuyen=None):
+    hom_nay = hom_nay_vn()
+    dang_luu = request.method == "POST"
+    form = request.form.to_dict() if dang_luu else {"ngay_chay": hom_nay.isoformat()}
+    loi, danh_muc, chuyen = {}, {}, None
+    ma_http = 200
+    if dang_luu:
+        du_lieu, loi = kiem_tra_form(form, hanh_dong, hom_nay)
+        if loi:
+            ma_http = 400
+
+    try:
+        with closing(get_connection()) as conn:
+            if dang_luu and not loi:
+                conn.start_transaction()
+
+            with closing(conn.cursor(dictionary=True, buffered=True)) as cursor:
+                if ma_chuyen is not None:
+                    chuyen = doc_chuyen(cursor, ma_chuyen)
+                    if not dang_luu:
+                        form = chuyen
+                danh_muc = doc_danh_muc(cursor)
+
+                if dang_luu and not loi:
+                    loi, ma_http = luu_chuyen(cursor, du_lieu, hanh_dong, ma_chuyen, form, chuyen)
+                    if not loi:
+                        conn.commit()
+                        return redirect(url_for("chuyen_xe.danh_sach"), code=303)
+                    conn.rollback()
+    except Error as exc:
+        if exc.errno in (errorcode.ER_LOCK_DEADLOCK, errorcode.ER_LOCK_WAIT_TIMEOUT):
+            loi["chung"] = "Dá»¯ liá»‡u Ä‘ang Ä‘Æ°á»£c cáº­p nháº­t. Vui lÃ²ng lÆ°u láº¡i."
+            ma_http = 409
+        else:
+            current_app.logger.exception("KhÃ´ng xá»­ lÃ½ Ä‘Æ°á»£c biá»ƒu máº«u chuyáº¿n xe")
+            loi["chung"] = "KhÃ´ng lÆ°u hoáº·c táº£i Ä‘Æ°á»£c dá»¯ liá»‡u. Kiá»ƒm tra káº¿t ná»‘i vÃ  cÃ¡c báº£ng MySQL."
+            ma_http = 503
+
+    return render_template(
+        "chuyenxe/form.html", form=form, loi=loi, danh_muc=danh_muc,
+        hom_nay=hom_nay.isoformat(), hanh_dong=hanh_dong, chuyen=chuyen,
+    ), ma_http
+
+
+@bp.route("/them", methods=["GET", "POST"])
+def them():
+    return xu_ly_form("them")
+
+
+@bp.route("/<int:ma_chuyen>/sua", methods=["GET", "POST"])
+def sua(ma_chuyen):
+    return xu_ly_form("sua", ma_chuyen)
+
+
+@bp.route("/<int:ma_chuyen>/hoan-thanh", methods=["GET", "POST"])
+def hoan_thanh(ma_chuyen):
+    return xu_ly_form("hoan_thanh", ma_chuyen)
+
+
+@bp.post("/<int:ma_chuyen>/huy")
+def huy(ma_chuyen):
+    try:
+        with closing(get_connection()) as conn:
+            with closing(conn.cursor(dictionary=True)) as cursor:
+                cursor.execute("""
+                    UPDATE chuyen_xe SET trang_thai = 'DA_HUY'
+                    WHERE ma_chuyen = %s AND trang_thai = 'DA_LEN_LICH'
+                """, (ma_chuyen,))
+                if cursor.rowcount == 0:
+                    doc_chuyen(cursor, ma_chuyen)
+                    abort(409, description="Chuyáº¿n Ä‘Ã£ thay Ä‘á»•i. Táº£i láº¡i danh sÃ¡ch trÆ°á»›c khi thao tÃ¡c.")
+            conn.commit()
+    except Error:
+        current_app.logger.exception("KhÃ´ng há»§y Ä‘Æ°á»£c chuyáº¿n xe")
+        abort(503, description="ChÆ°a há»§y Ä‘Æ°á»£c chuyáº¿n xe. Vui lÃ²ng thá»­ láº¡i.")
+
+    return redirect(url_for("chuyen_xe.danh_sach"), code=303)
+
+
+==================== FILE: modules\luong.py ====================
+
+from contextlib import closing
+from datetime import datetime, timedelta, timezone
+
+from flask import Blueprint, current_app, render_template, request
+from mysql.connector import Error, errorcode
+
+from db import get_connection
+
+
+bp = Blueprint("luong", __name__, url_prefix="/bao-cao")
+MUI_GIO_VIET_NAM = timezone(timedelta(hours=7))
+
+
+def hom_nay_vn():
+    return datetime.now(MUI_GIO_VIET_NAM).date()
+
+
+SQL_BAO_CAO_LUONG = """
+    SELECT
+        tx.ma_tai_xe,
+        tx.ho_ten,
+        COALESCE(lx.so_chuyen_lai, 0) AS so_chuyen_lai,
+        COALESCE(px.so_chuyen_phu, 0) AS so_chuyen_phu,
+        COALESCE(lx.luong_lai, 0) + COALESCE(px.luong_phu, 0) AS tong_luong
+    FROM tai_xe tx
+    LEFT JOIN (
+        SELECT
+            ma_lai_xe,
+            COUNT(*) AS so_chuyen_lai,
+            SUM(
+                200000 * CASE do_phuc_tap_chot
+                    WHEN 1 THEN 1.00
+                    WHEN 2 THEN 1.25
+                    WHEN 3 THEN 1.50
+                    ELSE 0
+                END
+            ) AS luong_lai
+        FROM chuyen_xe
+        WHERE trang_thai = 'HOAN_THANH'
+          AND ngay_chay >= %s
+          AND ngay_chay < DATE_ADD(%s, INTERVAL 1 MONTH)
+          AND ngay_chay <= %s
+        GROUP BY ma_lai_xe
+    ) lx ON tx.ma_tai_xe = lx.ma_lai_xe
+    LEFT JOIN (
+        SELECT
+            ma_phu_xe,
+            COUNT(*) AS so_chuyen_phu,
+            SUM(
+                100000 * CASE do_phuc_tap_chot
+                    WHEN 1 THEN 1.00
+                    WHEN 2 THEN 1.25
+                    WHEN 3 THEN 1.50
+                    ELSE 0
+                END
+            ) AS luong_phu
+        FROM chuyen_xe
+        WHERE trang_thai = 'HOAN_THANH'
+          AND ngay_chay >= %s
+          AND ngay_chay < DATE_ADD(%s, INTERVAL 1 MONTH)
+          AND ngay_chay <= %s
+        GROUP BY ma_phu_xe
+    ) px ON tx.ma_tai_xe = px.ma_phu_xe
+    ORDER BY tx.ho_ten, tx.ma_tai_xe
+"""
+
+
+@bp.get("/luong")
+def bao_cao_luong():
+    hom_nay = hom_nay_vn()
+    thang_hien_tai = hom_nay.strftime("%Y-%m")
+    thang_chon = request.args.get("thang", thang_hien_tai).strip()
+
+    loi = None
+    danh_sach_luong = []
+
+    try:
+        ngay_dau_thang = datetime.strptime(thang_chon, "%Y-%m").date().replace(day=1)
+        if ngay_dau_thang > hom_nay.replace(day=1):
+            loi = "Chá»‰ Ä‘Æ°á»£c chá»n thÃ¡ng hiá»‡n táº¡i hoáº·c cÃ¡c thÃ¡ng Ä‘Ã£ qua."
+    except ValueError:
+        loi = "ThÃ¡ng lá»±a chá»n khÃ´ng há»£p lá»‡."
+
+    if loi is None:
+        try:
+            with closing(get_connection()) as conn:
+                with closing(conn.cursor(dictionary=True)) as cursor:
+                    cursor.execute(
+                        SQL_BAO_CAO_LUONG,
+                        (
+                            ngay_dau_thang,
+                            ngay_dau_thang,
+                            hom_nay,
+                            ngay_dau_thang,
+                            ngay_dau_thang,
+                            hom_nay,
+                        ),
+                    )
+                    danh_sach_luong = cursor.fetchall()
+        except Error as exc:
+            if exc.errno == errorcode.ER_NO_SUCH_TABLE:
+                loi = "ChÆ°a cÃ³ Ä‘á»§ báº£ng chuyen_xe hoáº·c tai_xe trong CSDL."
+            else:
+                current_app.logger.exception("Lá»—i truy váº¥n bÃ¡o cÃ¡o lÆ°Æ¡ng")
+                loi = "KhÃ´ng thá»ƒ truy xuáº¥t dá»¯ liá»‡u lÆ°Æ¡ng tÃ i xáº¿ tá»« MySQL."
+
+    return render_template(
+        "luong/index.html",
+        danh_sach_luong=danh_sach_luong,
+        thang_chon=thang_chon,
+        thang_hien_tai=thang_hien_tai,
+        hom_nay=hom_nay,
+        loi=loi,
+    )
+
+==================== FILE: modules\tai_xe.py ====================
+
+from contextlib import closing
+from datetime import date, datetime, timedelta, timezone
+
+from flask import Blueprint, abort, current_app, redirect, render_template, request, url_for
+from mysql.connector import Error, errorcode
+
+from db import get_connection
+
+
+bp = Blueprint("tai_xe", __name__, url_prefix="/tai-xe")
+MUI_GIO_VIET_NAM = timezone(timedelta(hours=7))
+
+
+def hom_nay_vn():
+    return datetime.now(MUI_GIO_VIET_NAM).date()
+
+
+@bp.get("")
+def danh_sach():
+    ngay_xem = hom_nay_vn()
+
+    try:
+        with closing(get_connection()) as connection:
+            with closing(connection.cursor(dictionary=True)) as cursor:
+                cursor.execute(
+                    """
+                    SELECT ma_tai_xe, ho_ten, cmt_cccd, ma_bang_lai, loai_bang_lai,
+                           dia_chi, ngay_sinh, ngay_bat_dau_lai_xe,
+                           TIMESTAMPDIFF(YEAR, ngay_bat_dau_lai_xe, %s) AS tham_nien
+                    FROM tai_xe
+                    ORDER BY ho_ten, ma_tai_xe
+                    """,
+                    (ngay_xem,),
+                )
+                danh_sach_tai_xe = cursor.fetchall()
+    except Error:
+        current_app.logger.exception("KhÃ´ng táº£i Ä‘Æ°á»£c danh sÃ¡ch tÃ i xáº¿ tá»« MySQL")
+        return render_template(
+            "tai_xe/index.html",
+            loi="KhÃ´ng táº£i Ä‘Æ°á»£c danh sÃ¡ch tÃ i xáº¿. HÃ£y kiá»ƒm tra káº¿t ná»‘i MySQL vÃ  báº£ng tai_xe.",
+        ), 503
+
+    return render_template("tai_xe/index.html", danh_sach_tai_xe=danh_sach_tai_xe)
+
+
+def kiem_tra_tai_xe(form, hom_nay):
+    tai_xe = {}
+    loi = {}
+
+    for cot, so_ky_tu in (
+        ("ho_ten", 100),
+        ("cmt_cccd", 20),
+        ("ma_bang_lai", 30),
+        ("loai_bang_lai", 20),
+        ("dia_chi", 255),
+    ):
+        gia_tri = form.get(cot, "").strip()
+        if cot in ("cmt_cccd", "ma_bang_lai", "loai_bang_lai"):
+            gia_tri = "".join(gia_tri.split()).upper()
+
+        if not gia_tri:
+            loi[cot] = "HÃ£y nháº­p thÃ´ng tin nÃ y."
+        elif len(gia_tri) > so_ky_tu:
+            loi[cot] = f"Nháº­p tá»‘i Ä‘a {so_ky_tu} kÃ½ tá»±."
+        else:
+            tai_xe[cot] = gia_tri
+
+    for cot in ("ngay_sinh", "ngay_bat_dau_lai_xe"):
+        try:
+            gia_tri = date.fromisoformat(form.get(cot, ""))
+        except ValueError:
+            loi[cot] = "HÃ£y nháº­p ngÃ y há»£p lá»‡."
+            continue
+
+        if gia_tri > hom_nay:
+            loi[cot] = "HÃ£y chá»n ngÃ y tá»« hÃ´m nay trá»Ÿ vá» trÆ°á»›c."
+        else:
+            tai_xe[cot] = gia_tri
+
+    ngay_sinh = tai_xe.get("ngay_sinh")
+    ngay_bat_dau = tai_xe.get("ngay_bat_dau_lai_xe")
+    if ngay_sinh and ngay_bat_dau and ngay_bat_dau <= ngay_sinh:
+        loi["ngay_bat_dau_lai_xe"] = "NgÃ y báº¯t Ä‘áº§u lÃ¡i xe pháº£i sau ngÃ y sinh."
+
+    return tai_xe, loi
+
+
+def loi_khi_luu_tai_xe(exc):
+    if exc.errno == errorcode.ER_DUP_ENTRY:
+        thong_diep = str(exc)
+        if "cmt_cccd" in thong_diep:
+            return {"cmt_cccd": "Sá»‘ CMT/CCCD nÃ y Ä‘Ã£ tá»“n táº¡i trong há»‡ thá»‘ng."}, 409
+        if "ma_bang_lai" in thong_diep:
+            return {"ma_bang_lai": "MÃ£ báº±ng lÃ¡i nÃ y Ä‘Ã£ tá»“n táº¡i trong há»‡ thá»‘ng."}, 409
+        return {"chung": "ThÃ´ng tin Ä‘á»‹nh danh (CMT/CCCD hoáº·c mÃ£ báº±ng lÃ¡i) bá»‹ trÃ¹ng."}, 409
+
+    current_app.logger.exception("KhÃ´ng lÆ°u Ä‘Æ°á»£c tÃ i xáº¿ vÃ o MySQL")
+    return {"chung": "ChÆ°a lÆ°u Ä‘Æ°á»£c thÃ´ng tin tÃ i xáº¿. HÃ£y thá»­ láº¡i."}, 503
+
+
+def hien_thi_form(form, loi, hom_nay, *, ma_tai_xe=None, trang_thai=200):
+    return render_template(
+        "tai_xe/form.html",
+        form=form,
+        loi=loi,
+        hom_nay=hom_nay,
+        ma_tai_xe=ma_tai_xe,
+    ), trang_thai
+
+
+@bp.route("/them", methods=["GET", "POST"])
+def them():
+    hom_nay = hom_nay_vn()
+    if request.method != "POST":
+        return hien_thi_form({}, {}, hom_nay)
+
+    form = request.form
+    tai_xe, loi = kiem_tra_tai_xe(form, hom_nay)
+    trang_thai = 400
+
+    if not loi:
+        try:
+            with closing(get_connection()) as connection:
+                with closing(connection.cursor()) as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO tai_xe (
+                            ho_ten, cmt_cccd, ma_bang_lai, loai_bang_lai,
+                            dia_chi, ngay_sinh, ngay_bat_dau_lai_xe
+                        ) VALUES (
+                            %(ho_ten)s, %(cmt_cccd)s, %(ma_bang_lai)s, %(loai_bang_lai)s,
+                            %(dia_chi)s, %(ngay_sinh)s, %(ngay_bat_dau_lai_xe)s
+                        )
+                        """,
+                        tai_xe,
+                    )
+                connection.commit()
+        except Error as exc:
+            loi, trang_thai = loi_khi_luu_tai_xe(exc)
+        else:
+            return redirect(url_for("tai_xe.danh_sach"), code=303)
+
+    return hien_thi_form(form, loi, hom_nay, trang_thai=trang_thai)
+
+
+def doc_tai_xe(cursor, ma_tai_xe, *, khoa=False):
+    cau_lenh = """
+        SELECT ma_tai_xe, ho_ten, cmt_cccd, ma_bang_lai, loai_bang_lai,
+               dia_chi, ngay_sinh, ngay_bat_dau_lai_xe
+        FROM tai_xe
+        WHERE ma_tai_xe = %s
+    """
+    if khoa:
+        cau_lenh += " FOR UPDATE"
+    cursor.execute(cau_lenh, (ma_tai_xe,))
+    tai_xe = cursor.fetchone()
+    if tai_xe is None:
+        abort(404, description="KhÃ´ng tÃ¬m tháº¥y tÃ i xáº¿.")
+    return tai_xe
+
+
+@bp.get("/<int:ma_tai_xe>/sua")
+def sua(ma_tai_xe):
+    hom_nay = hom_nay_vn()
+    try:
+        with closing(get_connection()) as connection:
+            with closing(connection.cursor(dictionary=True, buffered=True)) as cursor:
+                form = doc_tai_xe(cursor, ma_tai_xe)
+    except Error:
+        current_app.logger.exception("KhÃ´ng táº£i Ä‘Æ°á»£c thÃ´ng tin tÃ i xáº¿ tá»« MySQL")
+        return render_template("tai_xe/index.html", loi="KhÃ´ng táº£i Ä‘Æ°á»£c thÃ´ng tin tÃ i xáº¿."), 503
+
+    return hien_thi_form(form, {}, hom_nay, ma_tai_xe=ma_tai_xe)
+
+
+@bp.post("/<int:ma_tai_xe>/sua")
+def luu_sua(ma_tai_xe):
+    hom_nay = hom_nay_vn()
+    form = request.form
+    tai_xe, loi = kiem_tra_tai_xe(form, hom_nay)
+    trang_thai = 400
+
+    if not loi:
+        try:
+            with closing(get_connection()) as connection:
+                with closing(connection.cursor()) as cursor:
+                    tai_xe["ma_tai_xe"] = ma_tai_xe
+                    cursor.execute(
+                        """
+                        UPDATE tai_xe
+                        SET ho_ten = %(ho_ten)s,
+                            cmt_cccd = %(cmt_cccd)s,
+                            ma_bang_lai = %(ma_bang_lai)s,
+                            loai_bang_lai = %(loai_bang_lai)s,
+                            dia_chi = %(dia_chi)s,
+                            ngay_sinh = %(ngay_sinh)s,
+                            ngay_bat_dau_lai_xe = %(ngay_bat_dau_lai_xe)s
+                        WHERE ma_tai_xe = %(ma_tai_xe)s
+                        """,
+                        tai_xe,
+                    )
+                    if cursor.rowcount == 0:
+                        cursor.execute("SELECT ma_tai_xe FROM tai_xe WHERE ma_tai_xe = %s", (ma_tai_xe,))
+                        if cursor.fetchone() is None:
+                            abort(404, description="KhÃ´ng tÃ¬m tháº¥y tÃ i xáº¿.")
+                connection.commit()
+        except Error as exc:
+            loi, trang_thai = loi_khi_luu_tai_xe(exc)
+        else:
+            return redirect(url_for("tai_xe.danh_sach"), code=303)
+
+    return hien_thi_form(form, loi, hom_nay, ma_tai_xe=ma_tai_xe, trang_thai=trang_thai)
+
+
+def tim_chuyen_tham_chieu(cursor, ma_tai_xe, *, khoa=False):
+    cau_lenh = """
+        SELECT ma_chuyen
+        FROM chuyen_xe
+        WHERE ma_lai_xe = %s OR ma_phu_xe = %s
+        ORDER BY ma_chuyen
+        LIMIT 1
+    """
+    if khoa:
+        cau_lenh += " FOR UPDATE"
+
+    try:
+        cursor.execute(cau_lenh, (ma_tai_xe, ma_tai_xe))
+    except Error as exc:
+        if exc.errno == errorcode.ER_NO_SUCH_TABLE:
+            return None
+        raise
+
+    return cursor.fetchone()
+
+
+@bp.route("/<int:ma_tai_xe>/xoa", methods=["GET", "POST"])
+def xoa(ma_tai_xe):
+    xac_nhan = request.method == "POST"
+
+    try:
+        with closing(get_connection()) as connection:
+            if xac_nhan:
+                connection.start_transaction()
+
+            with closing(connection.cursor(dictionary=True, buffered=True)) as cursor:
+                tai_xe = doc_tai_xe(cursor, ma_tai_xe, khoa=xac_nhan)
+                chuyen = tim_chuyen_tham_chieu(cursor, ma_tai_xe, khoa=xac_nhan)
+                if not xac_nhan or chuyen:
+                    if xac_nhan:
+                        connection.rollback()
+                    trang_thai = 409 if xac_nhan else 200
+                    return render_template(
+                        "tai_xe/xoa.html", tai_xe=tai_xe, ma_tai_xe=ma_tai_xe, chuyen=chuyen
+                    ), trang_thai
+
+                cursor.execute("DELETE FROM tai_xe WHERE ma_tai_xe = %s", (ma_tai_xe,))
+
+            connection.commit()
+    except Error as exc:
+        if exc.errno in (errorcode.ER_ROW_IS_REFERENCED, errorcode.ER_ROW_IS_REFERENCED_2):
+            loi = "TÃ i xáº¿ Ä‘ang Ä‘Æ°á»£c phÃ¢n cÃ´ng trong chuyáº¿n xe nÃªn khÃ´ng thá»ƒ xÃ³a."
+            trang_thai = 409
+        else:
+            current_app.logger.exception("KhÃ´ng thá»±c hiá»‡n Ä‘Æ°á»£c yÃªu cáº§u xÃ³a tÃ i xáº¿ tá»« MySQL")
+            loi = "ChÆ°a thá»ƒ thá»±c hiá»‡n yÃªu cáº§u xÃ³a tÃ i xáº¿. HÃ£y thá»­ láº¡i."
+            trang_thai = 503
+        return render_template("tai_xe/xoa.html", loi=loi), trang_thai
+
+    return redirect(url_for("tai_xe.danh_sach"), code=303)
+
+
+@bp.get("/<int:ma_tai_xe>/lich-su")
+def lich_su(ma_tai_xe):
+    tai_xe = None
+    try:
+        with closing(get_connection()) as connection:
+            with closing(connection.cursor(dictionary=True, buffered=True)) as cursor:
+                tai_xe = doc_tai_xe(cursor, ma_tai_xe)
+                cursor.execute(
+                    """
+                    SELECT c.ma_chuyen, c.ngay_chay, c.trang_thai,
+                           CASE
+                               WHEN c.ma_lai_xe = %s THEN 'LÃ¡i xe'
+                               ELSE 'Phá»¥ xe'
+                           END AS vai_tro,
+                           x.bien_so,
+                           t.diem_dau, t.diem_cuoi
+                    FROM chuyen_xe AS c
+                    JOIN xe AS x ON x.ma_xe = c.ma_xe
+                    JOIN tuyen_xe AS t ON t.ma_tuyen = c.ma_tuyen
+                    WHERE c.ma_lai_xe = %s OR c.ma_phu_xe = %s
+                    ORDER BY c.ngay_chay DESC, c.ma_chuyen DESC
+                    """,
+                    (ma_tai_xe, ma_tai_xe, ma_tai_xe),
+                )
+                danh_sach_chuyen = cursor.fetchall()
+    except Error as exc:
+        if exc.errno == errorcode.ER_NO_SUCH_TABLE and tai_xe is not None:
+            loi = "Cáº§n táº¡o báº£ng chuyen_xe theo SQL chung Ä‘á»ƒ xem lá»‹ch sá»­ phÃ¢n cÃ´ng."
+        else:
+            current_app.logger.exception("KhÃ´ng táº£i Ä‘Æ°á»£c lá»‹ch sá»­ phÃ¢n cÃ´ng tÃ i xáº¿ tá»« MySQL")
+            loi = "KhÃ´ng táº£i Ä‘Æ°á»£c lá»‹ch sá»­ phÃ¢n cÃ´ng. HÃ£y kiá»ƒm tra káº¿t ná»‘i MySQL vÃ  cáº¥u trÃºc báº£ng."
+        return render_template("tai_xe/lich_su.html", tai_xe=tai_xe, loi=loi), 503
+
+    return render_template("tai_xe/lich_su.html", tai_xe=tai_xe, danh_sach_chuyen=danh_sach_chuyen)
+
+==================== FILE: modules\tuyen_xe.py ====================
+
+
+from contextlib import closing
+from decimal import Decimal, InvalidOperation
+
+from flask import Blueprint, abort, current_app, redirect, render_template, request, url_for
+from mysql.connector import Error, errorcode
+
+from db import get_connection
+
+
+bp = Blueprint("tuyen_xe", __name__, url_prefix="/tuyen-xe")
+
+
+@bp.get("")
+def danh_sach():
+    try:
+        with closing(get_connection()) as connection:
+            with closing(connection.cursor(dictionary=True)) as cursor:
+                cursor.execute("""
+                    SELECT ma_tuyen, diem_dau, diem_cuoi,
+                           do_dai_km, do_phuc_tap
+                    FROM tuyen_xe
+                    ORDER BY ma_tuyen
+                """)
+                danh_sach_tuyen = cursor.fetchall()
+
+    except Error:
+        current_app.logger.exception("KhÃ´ng táº£i Ä‘Æ°á»£c danh sÃ¡ch tuyáº¿n xe tá»« MySQL")
+        return render_template(
+            "tuyen_xe/index.html",
+            loi="KhÃ´ng táº£i Ä‘Æ°á»£c danh sÃ¡ch tuyáº¿n xe. HÃ£y kiá»ƒm tra káº¿t ná»‘i MySQL."
+        ), 503
+
+    return render_template(
+        "tuyen_xe/index.html",
+        danh_sach_tuyen=danh_sach_tuyen
+    )
+
+
+def kiem_tra_tuyen(form):
+    tuyen = {}
+    loi = {}
+
+    for cot in ("diem_dau", "diem_cuoi"):
+        gia_tri = form.get(cot, "").strip()
+
+        if not gia_tri:
+            loi[cot] = "HÃ£y nháº­p thÃ´ng tin nÃ y."
+        elif len(gia_tri) > 100:
+            loi[cot] = "Nháº­p tá»‘i Ä‘a 100 kÃ½ tá»±."
+        else:
+            tuyen[cot] = gia_tri
+
+    try:
+        do_dai = Decimal(form.get("do_dai_km", "").strip())
+
+        if not do_dai.is_finite() or not (0 < do_dai <= Decimal("999999.99")):
+            loi["do_dai_km"] = "Äá»™ dÃ i tuyáº¿n pháº£i lá»›n hÆ¡n 0 vÃ  khÃ´ng vÆ°á»£t quÃ¡ 999999.99 km."
+        elif do_dai != do_dai.quantize(Decimal("0.01")):
+            loi["do_dai_km"] = "Äá»™ dÃ i tuyáº¿n chá»‰ Ä‘Æ°á»£c cÃ³ tá»‘i Ä‘a 2 chá»¯ sá»‘ tháº­p phÃ¢n."
+        else:
+            tuyen["do_dai_km"] = do_dai
+
+    except (InvalidOperation, ValueError):
+        loi["do_dai_km"] = "HÃ£y nháº­p Ä‘á»™ dÃ i tuyáº¿n há»£p lá»‡."
+
+    try:
+        do_phuc_tap = int(form.get("do_phuc_tap", ""))
+
+        if do_phuc_tap not in (1, 2, 3):
+            loi["do_phuc_tap"] = "Má»©c Ä‘á»™ phá»©c táº¡p chá»‰ Ä‘Æ°á»£c lÃ  1, 2 hoáº·c 3."
+        else:
+            tuyen["do_phuc_tap"] = do_phuc_tap
+
+    except ValueError:
+        loi["do_phuc_tap"] = "HÃ£y nháº­p má»©c Ä‘á»™ phá»©c táº¡p há»£p lá»‡."
+
+    return tuyen, loi
+
+
+def hien_thi_form(form, loi, ma_tuyen=None, trang_thai=200):
+    return render_template(
+        "tuyen_xe/form.html",
+        form=form,
+        loi=loi,
+        ma_tuyen=ma_tuyen
+    ), trang_thai
+
+
+@bp.route("/them", methods=["GET", "POST"])
+def them():
+    if request.method != "POST":
+        return hien_thi_form({}, {})
+
+    form = request.form
+    tuyen, loi = kiem_tra_tuyen(form)
+
+    if not loi:
+        try:
+            with closing(get_connection()) as connection:
+                with closing(connection.cursor()) as cursor:
+                    cursor.execute("""
+                        INSERT INTO tuyen_xe (
+                            diem_dau, diem_cuoi, do_dai_km, do_phuc_tap
+                        )
+                        VALUES (
+                            %(diem_dau)s, %(diem_cuoi)s,
+                            %(do_dai_km)s, %(do_phuc_tap)s
+                        )
+                    """, tuyen)
+
+                connection.commit()
+
+        except Error:
+            current_app.logger.exception("KhÃ´ng thÃªm Ä‘Æ°á»£c tuyáº¿n xe vÃ o MySQL")
+            loi["chung"] = "ChÆ°a thÃªm Ä‘Æ°á»£c tuyáº¿n xe. HÃ£y thá»­ láº¡i."
+            return hien_thi_form(form, loi, trang_thai=503)
+
+        return redirect(url_for("tuyen_xe.danh_sach"), code=303)
+
+    return hien_thi_form(form, loi, trang_thai=400)
+
+
+def doc_tuyen(cursor, ma_tuyen, khoa=False):
+    cau_lenh = """
+        SELECT ma_tuyen, diem_dau, diem_cuoi, do_dai_km, do_phuc_tap
+        FROM tuyen_xe
+        WHERE ma_tuyen = %s
+    """
+
+    if khoa:
+        cau_lenh += " FOR UPDATE"
+
+    cursor.execute(cau_lenh, (ma_tuyen,))
+    tuyen = cursor.fetchone()
+
+    if tuyen is None:
+        abort(404, description="KhÃ´ng tÃ¬m tháº¥y tuyáº¿n xe.")
+
+    return tuyen
+
+
+@bp.get("/<int:ma_tuyen>/sua")
+def sua(ma_tuyen):
+    try:
+        with closing(get_connection()) as connection:
+            with closing(connection.cursor(dictionary=True)) as cursor:
+                form = doc_tuyen(cursor, ma_tuyen)
+
+    except Error:
+        current_app.logger.exception("KhÃ´ng táº£i Ä‘Æ°á»£c thÃ´ng tin tuyáº¿n xe")
+        return render_template(
+            "tuyen_xe/index.html",
+            loi="KhÃ´ng táº£i Ä‘Æ°á»£c thÃ´ng tin tuyáº¿n xe."
+        ), 503
+
+    return hien_thi_form(form, {}, ma_tuyen=ma_tuyen)
+
+
+@bp.post("/<int:ma_tuyen>/sua")
+def luu_sua(ma_tuyen):
+    form = request.form
+    tuyen, loi = kiem_tra_tuyen(form)
+
+    if loi:
+        return hien_thi_form(form, loi, ma_tuyen=ma_tuyen, trang_thai=400)
+
+    try:
+        with closing(get_connection()) as connection:
+            with closing(connection.cursor()) as cursor:
+                cursor.execute("""
+                    UPDATE tuyen_xe
+                    SET diem_dau = %(diem_dau)s,
+                        diem_cuoi = %(diem_cuoi)s,
+                        do_dai_km = %(do_dai_km)s,
+                        do_phuc_tap = %(do_phuc_tap)s
+                    WHERE ma_tuyen = %(ma_tuyen)s
+                """, {**tuyen, "ma_tuyen": ma_tuyen})
+
+                if cursor.rowcount == 0:
+                    cursor.execute(
+                        "SELECT ma_tuyen FROM tuyen_xe WHERE ma_tuyen = %s",
+                        (ma_tuyen,)
+                    )
+                    if cursor.fetchone() is None:
+                        abort(404, description="KhÃ´ng tÃ¬m tháº¥y tuyáº¿n xe.")
+
+            connection.commit()
+
+    except Error:
+        current_app.logger.exception("KhÃ´ng cáº­p nháº­t Ä‘Æ°á»£c tuyáº¿n xe")
+        loi["chung"] = "ChÆ°a cáº­p nháº­t Ä‘Æ°á»£c tuyáº¿n xe. HÃ£y thá»­ láº¡i."
+        return hien_thi_form(form, loi, ma_tuyen=ma_tuyen, trang_thai=503)
+
+    return redirect(url_for("tuyen_xe.danh_sach"), code=303)
+
+
+def tim_chuyen_tham_chieu(cursor, ma_tuyen):
+    try:
+        cursor.execute("""
+            SELECT ma_chuyen
+            FROM chuyen_xe
+            WHERE ma_tuyen = %s
+            ORDER BY ma_chuyen
+            LIMIT 1
+        """, (ma_tuyen,))
+
+    except Error as exc:
+        if exc.errno == errorcode.ER_NO_SUCH_TABLE:
+            return None
+        raise
+
+    return cursor.fetchone()
+
+
+@bp.route("/<int:ma_tuyen>/xoa", methods=["GET", "POST"])
+def xoa(ma_tuyen):
+    xac_nhan = request.method == "POST"
+
+    try:
+        with closing(get_connection()) as connection:
+            if xac_nhan:
+                connection.start_transaction()
+
+            with closing(connection.cursor(dictionary=True)) as cursor:
+                tuyen = doc_tuyen(cursor, ma_tuyen, khoa=xac_nhan)
+                chuyen = tim_chuyen_tham_chieu(cursor, ma_tuyen)
+
+                if not xac_nhan or chuyen:
+                    if xac_nhan:
+                        connection.rollback()
+
+                    return render_template(
+                        "tuyen_xe/xoa.html",
+                        tuyen=tuyen,
+                        ma_tuyen=ma_tuyen,
+                        chuyen=chuyen
+                    ), 409 if xac_nhan else 200
+
+                cursor.execute(
+                    "DELETE FROM tuyen_xe WHERE ma_tuyen = %s",
+                    (ma_tuyen,)
+                )
+
+            connection.commit()
+
+    except Error as exc:
+        if exc.errno in (
+            errorcode.ER_ROW_IS_REFERENCED,
+            errorcode.ER_ROW_IS_REFERENCED_2
+        ):
+            loi = "Tuyáº¿n xe Ä‘ang Ä‘Æ°á»£c chuyáº¿n xe tham chiáº¿u nÃªn khÃ´ng thá»ƒ xÃ³a."
+            trang_thai = 409
+        else:
+            current_app.logger.exception("KhÃ´ng xÃ³a Ä‘Æ°á»£c tuyáº¿n xe")
+            loi = "ChÆ°a thá»ƒ thá»±c hiá»‡n yÃªu cáº§u xÃ³a tuyáº¿n xe. HÃ£y thá»­ láº¡i."
+            trang_thai = 503
+
+        return render_template("tuyen_xe/xoa.html", loi=loi), trang_thai
+
+    return redirect(url_for("tuyen_xe.danh_sach"), code=303)
+
+
+==================== FILE: modules\xe.py ====================
+
+from contextlib import closing
+from datetime import date, datetime, timedelta, timezone
+
+from flask import Blueprint, abort, current_app, redirect, render_template, request, url_for
+from mysql.connector import Error, errorcode
+
+from db import get_connection
+
+
+bp = Blueprint("xe", __name__, url_prefix="/xe")
+MUI_GIO_VIET_NAM = timezone(timedelta(hours=7))
+
+
+@bp.get("")
+def danh_sach():
+    ngay_xem = datetime.now(MUI_GIO_VIET_NAM).date()
+
+    try:
+        with closing(get_connection()) as connection:
+            with closing(connection.cursor(dictionary=True)) as cursor:
+                cursor.execute(
+                    """
+                    SELECT ma_xe, bien_so, mau_xe, hang_san_xuat, model, doi_xe,
+                           ngay_dua_vao_su_dung, so_ghe, ngay_bao_duong_cuoi,
+                           so_ghe - 2 AS so_khach_toi_da,
+                           TIMESTAMPDIFF(YEAR, ngay_dua_vao_su_dung, %s)
+                               AS so_nam_su_dung
+                    FROM xe
+                    ORDER BY bien_so
+                    """,
+                    (ngay_xem,),
+                )
+                danh_sach_xe = cursor.fetchall()
+    except Error:
+        current_app.logger.exception("KhÃ´ng táº£i Ä‘Æ°á»£c danh sÃ¡ch xe tá»« MySQL")
+        return render_template(
+            "xe/index.html",
+            loi="KhÃ´ng táº£i Ä‘Æ°á»£c danh sÃ¡ch xe. HÃ£y kiá»ƒm tra káº¿t ná»‘i MySQL vÃ  báº£ng xe.",
+        ), 503
+
+    return render_template("xe/index.html", danh_sach_xe=danh_sach_xe)
+
+
+def kiem_tra_xe(form, hom_nay, *, ngay_bao_duong_da_luu=None):
+    xe = {}
+    loi = {}
+
+    for cot, so_ky_tu in (
+        ("bien_so", 20),
+        ("mau_xe", 80),
+        ("hang_san_xuat", 80),
+        ("model", 80),
+    ):
+        gia_tri = form.get(cot, "").strip()
+        if cot == "bien_so":
+            gia_tri = "".join(gia_tri.split()).upper()
+        if not gia_tri:
+            loi[cot] = "HÃ£y nháº­p thÃ´ng tin nÃ y."
+        elif len(gia_tri) > so_ky_tu:
+            loi[cot] = f"Nháº­p tá»‘i Ä‘a {so_ky_tu} kÃ½ tá»±."
+        else:
+            xe[cot] = gia_tri
+
+    for cot, toi_thieu in (("doi_xe", 0), ("so_ghe", 3)):
+        try:
+            gia_tri = int(form.get(cot, ""))
+        except ValueError:
+            loi[cot] = "HÃ£y nháº­p má»™t sá»‘ nguyÃªn."
+            continue
+        if toi_thieu <= gia_tri <= 65535:
+            xe[cot] = gia_tri
+        else:
+            loi[cot] = f"Nháº­p sá»‘ tá»« {toi_thieu} Ä‘áº¿n 65535."
+
+    cot_ngay = ["ngay_dua_vao_su_dung"]
+    if ngay_bao_duong_da_luu is None:
+        cot_ngay.append("ngay_bao_duong_cuoi")
+
+    for cot in cot_ngay:
+        try:
+            gia_tri = date.fromisoformat(form.get(cot, ""))
+        except ValueError:
+            loi[cot] = "HÃ£y nháº­p ngÃ y há»£p lá»‡."
+            continue
+        if gia_tri > hom_nay:
+            loi[cot] = "HÃ£y chá»n ngÃ y tá»« hÃ´m nay trá»Ÿ vá» trÆ°á»›c."
+        else:
+            xe[cot] = gia_tri
+
+    ngay_su_dung = xe.get("ngay_dua_vao_su_dung")
+    nam_san_xuat = xe.get("doi_xe")
+    if ngay_su_dung is not None and nam_san_xuat is not None and nam_san_xuat > ngay_su_dung.year:
+        loi["doi_xe"] = "NÄƒm sáº£n xuáº¥t khÃ´ng Ä‘Æ°á»£c sau nÄƒm Ä‘Æ°a xe vÃ o sá»­ dá»¥ng."
+
+    ngay_bao_duong = ngay_bao_duong_da_luu or xe.get("ngay_bao_duong_cuoi")
+    if ngay_su_dung and ngay_bao_duong and ngay_bao_duong < ngay_su_dung:
+        if ngay_bao_duong_da_luu is None:
+            loi["ngay_bao_duong_cuoi"] = "HÃ£y chá»n ngÃ y tá»« ngÃ y Ä‘Æ°a xe vÃ o sá»­ dá»¥ng trá»Ÿ Ä‘i."
+        else:
+            loi["ngay_dua_vao_su_dung"] = "NgÃ y Ä‘Æ°a vÃ o sá»­ dá»¥ng pháº£i báº±ng hoáº·c trÆ°á»›c ngÃ y báº£o dÆ°á»¡ng cuá»‘i."
+
+    return xe, loi
+
+
+def hien_thi_form(form, loi, hom_nay, *, ma_xe=None, trang_thai=200):
+    return render_template(
+        "xe/form.html", form=form, loi=loi, hom_nay=hom_nay, ma_xe=ma_xe
+    ), trang_thai
+
+
+def loi_khi_luu_xe(exc):
+    if exc.errno == errorcode.ER_DUP_ENTRY:
+        return {"bien_so": "Biá»ƒn sá»‘ nÃ y Ä‘Ã£ cÃ³ trong danh sÃ¡ch xe."}, 409
+
+    current_app.logger.exception("KhÃ´ng lÆ°u Ä‘Æ°á»£c xe vÃ o MySQL")
+    return {"chung": "ChÆ°a lÆ°u Ä‘Æ°á»£c xe. HÃ£y thá»­ láº¡i."}, 503
+
+
+@bp.route("/them", methods=["GET", "POST"])
+def them():
+    hom_nay = datetime.now(MUI_GIO_VIET_NAM).date()
+    if request.method != "POST":
+        return hien_thi_form({}, {}, hom_nay)
+
+    form = request.form
+    xe, loi = kiem_tra_xe(form, hom_nay)
+    trang_thai = 400
+
+    if not loi:
+        try:
+            with closing(get_connection()) as connection:
+                with closing(connection.cursor()) as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO xe (
+                            bien_so, mau_xe, hang_san_xuat, model, doi_xe,
+                            ngay_dua_vao_su_dung, so_ghe, ngay_bao_duong_cuoi
+                        ) VALUES (
+                            %(bien_so)s, %(mau_xe)s, %(hang_san_xuat)s, %(model)s,
+                            %(doi_xe)s, %(ngay_dua_vao_su_dung)s, %(so_ghe)s,
+                            %(ngay_bao_duong_cuoi)s
+                        )
+                        """,
+                        xe,
+                    )
+                connection.commit()
+        except Error as exc:
+            loi, trang_thai = loi_khi_luu_xe(exc)
+        else:
+            return redirect(url_for("xe.danh_sach"), code=303)
+
+    return hien_thi_form(form, loi, hom_nay, trang_thai=trang_thai)
+
+
+def doc_xe(cursor, ma_xe, *, khoa=False):
+    cau_lenh = """
+        SELECT bien_so, mau_xe, hang_san_xuat, model, doi_xe,
+               ngay_dua_vao_su_dung, so_ghe, ngay_bao_duong_cuoi
+        FROM xe
+        WHERE ma_xe = %s
+    """
+    if khoa:
+        cau_lenh += " FOR UPDATE"
+    cursor.execute(cau_lenh, (ma_xe,))
+    xe = cursor.fetchone()
+    if xe is None:
+        abort(404, description="KhÃ´ng tÃ¬m tháº¥y xe.")
+    return xe
+
+
+@bp.get("/<int:ma_xe>/sua")
+def sua(ma_xe):
+    hom_nay = datetime.now(MUI_GIO_VIET_NAM).date()
+    try:
+        with closing(get_connection()) as connection:
+            with closing(connection.cursor(dictionary=True, buffered=True)) as cursor:
+                form = doc_xe(cursor, ma_xe)
+    except Error:
+        current_app.logger.exception("KhÃ´ng táº£i Ä‘Æ°á»£c thÃ´ng tin xe tá»« MySQL")
+        return render_template("xe/index.html", loi="KhÃ´ng táº£i Ä‘Æ°á»£c thÃ´ng tin xe."), 503
+
+    return hien_thi_form(form, {}, hom_nay, ma_xe=ma_xe)
+
+
+@bp.post("/<int:ma_xe>/sua")
+def luu_sua(ma_xe):
+    hom_nay = datetime.now(MUI_GIO_VIET_NAM).date()
+    form = request.form.to_dict()
+    form.pop("ngay_bao_duong_cuoi", None)
+
+    try:
+        with closing(get_connection()) as connection:
+            connection.start_transaction()
+            with closing(connection.cursor(dictionary=True, buffered=True)) as cursor:
+                xe_cu = doc_xe(cursor, ma_xe, khoa=True)
+                ngay_bao_duong = xe_cu["ngay_bao_duong_cuoi"]
+                form["ngay_bao_duong_cuoi"] = ngay_bao_duong
+                xe, loi = kiem_tra_xe(form, hom_nay, ngay_bao_duong_da_luu=ngay_bao_duong)
+                if loi:
+                    connection.rollback()
+                    return hien_thi_form(form, loi, hom_nay, ma_xe=ma_xe, trang_thai=400)
+
+                if xe["so_ghe"] != xe_cu["so_ghe"]:
+                    cursor.execute(
+                        """
+                        SELECT ma_chuyen, so_khach
+                        FROM chuyen_xe
+                        WHERE ma_xe = %s AND trang_thai = 'DA_LEN_LICH' AND so_khach > %s
+                        ORDER BY so_khach DESC, ma_chuyen
+                        LIMIT 1
+                        FOR UPDATE
+                        """,
+                        (ma_xe, xe["so_ghe"] - 2),
+                    )
+                    chuyen = cursor.fetchone()
+                    if chuyen:
+                        loi["so_ghe"] = (
+                            f"Chuyáº¿n {chuyen['ma_chuyen']} Ä‘Ã£ lÃªn lá»‹ch cho {chuyen['so_khach']} khÃ¡ch. "
+                            f"Xe cáº§n Ã­t nháº¥t {chuyen['so_khach'] + 2} gháº¿."
+                        )
+                        connection.rollback()
+                        return hien_thi_form(form, loi, hom_nay, ma_xe=ma_xe, trang_thai=409)
+
+                xe["ma_xe"] = ma_xe
+                cursor.execute(
+                    """
+                    UPDATE xe
+                    SET bien_so = %(bien_so)s, mau_xe = %(mau_xe)s,
+                        hang_san_xuat = %(hang_san_xuat)s, model = %(model)s,
+                        doi_xe = %(doi_xe)s, ngay_dua_vao_su_dung = %(ngay_dua_vao_su_dung)s,
+                        so_ghe = %(so_ghe)s
+                    WHERE ma_xe = %(ma_xe)s
+                    """,
+                    xe,
+                )
+            connection.commit()
+    except Error as exc:
+        loi, trang_thai = loi_khi_luu_xe(exc)
+        return hien_thi_form(form, loi, hom_nay, ma_xe=ma_xe, trang_thai=trang_thai)
+
+    return redirect(url_for("xe.danh_sach"), code=303)
+
+
+def tim_chuyen_tham_chieu(cursor, ma_xe, *, khoa=False):
+    cau_lenh = """
+        SELECT ma_chuyen
+        FROM chuyen_xe
+        WHERE ma_xe = %s
+        ORDER BY ma_chuyen
+        LIMIT 1
+    """
+    if khoa:
+        cau_lenh += " FOR UPDATE"
+
+    try:
+        cursor.execute(cau_lenh, (ma_xe,))
+    except Error as exc:
+        if exc.errno == errorcode.ER_NO_SUCH_TABLE:
+            # Há»— trá»£ CSDL cá»¥c bá»™ má»›i Ä‘Æ°á»£c táº¡o tá»« xe.sql.
+            return None
+        raise
+
+    return cursor.fetchone()
+
+
+@bp.route("/<int:ma_xe>/xoa", methods=["GET", "POST"])
+def xoa(ma_xe):
+    xac_nhan = request.method == "POST"
+
+    try:
+        with closing(get_connection()) as connection:
+            if xac_nhan:
+                connection.start_transaction()
+
+            with closing(connection.cursor(dictionary=True, buffered=True)) as cursor:
+                xe = doc_xe(cursor, ma_xe, khoa=xac_nhan)
+                chuyen = tim_chuyen_tham_chieu(cursor, ma_xe, khoa=xac_nhan)
+                if not xac_nhan or chuyen:
+                    if xac_nhan:
+                        connection.rollback()
+                    trang_thai = 409 if xac_nhan else 200
+                    return render_template(
+                        "xe/xoa.html", xe=xe, ma_xe=ma_xe, chuyen=chuyen
+                    ), trang_thai
+
+                cursor.execute("DELETE FROM xe WHERE ma_xe = %s", (ma_xe,))
+
+            connection.commit()
+    except Error as exc:
+        if exc.errno in (errorcode.ER_ROW_IS_REFERENCED, errorcode.ER_ROW_IS_REFERENCED_2):
+            loi = "Xe Ä‘ang Ä‘Æ°á»£c dá»¯ liá»‡u liÃªn quan tham chiáº¿u nÃªn khÃ´ng thá»ƒ xÃ³a."
+            trang_thai = 409
+        else:
+            current_app.logger.exception("KhÃ´ng thá»±c hiá»‡n Ä‘Æ°á»£c yÃªu cáº§u xÃ³a xe tá»« MySQL")
+            loi = "ChÆ°a thá»ƒ thá»±c hiá»‡n yÃªu cáº§u xÃ³a xe. HÃ£y thá»­ láº¡i."
+            trang_thai = 503
+        return render_template("xe/xoa.html", loi=loi), trang_thai
+
+    return redirect(url_for("xe.danh_sach"), code=303)
+
+
+@bp.get("/<int:ma_xe>/lich-su")
+def lich_su(ma_xe):
+    xe = None
+    try:
+        with closing(get_connection()) as connection:
+            with closing(connection.cursor(dictionary=True, buffered=True)) as cursor:
+                xe = doc_xe(cursor, ma_xe)
+                cursor.execute(
+                    """
+                    SELECT c.ma_chuyen, c.ngay_chay, c.so_khach, c.gia_ve, c.trang_thai,
+                           t.diem_dau, t.diem_cuoi,
+                           lai_xe.ho_ten AS ten_lai_xe, phu_xe.ho_ten AS ten_phu_xe
+                    FROM chuyen_xe AS c
+                    JOIN tuyen_xe AS t ON t.ma_tuyen = c.ma_tuyen
+                    JOIN tai_xe AS lai_xe ON lai_xe.ma_tai_xe = c.ma_lai_xe
+                    JOIN tai_xe AS phu_xe ON phu_xe.ma_tai_xe = c.ma_phu_xe
+                    WHERE c.ma_xe = %s
+                    ORDER BY c.ngay_chay DESC, c.ma_chuyen DESC
+                    """,
+                    (ma_xe,),
+                )
+                danh_sach_chuyen = cursor.fetchall()
+    except Error as exc:
+        if exc.errno == errorcode.ER_NO_SUCH_TABLE and xe is not None:
+            loi = "Cáº§n táº¡o cÃ¡c báº£ng chuyáº¿n xe, tuyáº¿n xe vÃ  tÃ i xáº¿ theo SQL chung Ä‘á»ƒ xem lá»‹ch sá»­."
+        else:
+            current_app.logger.exception("KhÃ´ng táº£i Ä‘Æ°á»£c lá»‹ch sá»­ chuyáº¿n tá»« MySQL")
+            loi = "KhÃ´ng táº£i Ä‘Æ°á»£c lá»‹ch sá»­ chuyáº¿n. HÃ£y kiá»ƒm tra káº¿t ná»‘i MySQL vÃ  cáº¥u trÃºc báº£ng."
+        return render_template("xe/lich_su.html", xe=xe, loi=loi), 503
+
+    return render_template("xe/lich_su.html", xe=xe, danh_sach_chuyen=danh_sach_chuyen)
+
+
+==================== FILE: sql\bao_duong.sql ====================
+
+USE quan_ly_van_tai;
+
+-- NgÃ y cá»‘ Ä‘á»‹nh dÃ¹ng Ä‘á»ƒ Ä‘á»‘i chiáº¿u bÃ i táº­p
+SET @ngay_xem = '2026-11-11';
+SELECT
+    k.ma_xe,
+    k.bien_so,
+    k.ngay_bao_duong_cuoi,
+    k.tong_km_quy_doi,
+
+    GREATEST(
+        0, 360 - FLOOR(k.tong_km_quy_doi / 100)
+    ) AS chu_ky_ngay,
+
+    DATE_ADD(
+        k.ngay_bao_duong_cuoi,
+        INTERVAL GREATEST(
+            0, 360 - FLOOR(k.tong_km_quy_doi / 100)
+        ) DAY
+    ) AS ngay_den_han
+
+FROM (
+    SELECT
+        x.ma_xe,
+        x.bien_so,
+        x.ngay_bao_duong_cuoi,
+
+        COALESCE(SUM(
+            c.do_dai_km_chot *
+            CASE c.do_phuc_tap_chot
+                WHEN 1 THEN 1.00
+                WHEN 2 THEN 1.25
+                WHEN 3 THEN 1.50
+                ELSE 0
+            END
+        ), 0) AS tong_km_quy_doi
+
+    FROM xe x
+    LEFT JOIN chuyen_xe c
+        ON c.ma_xe = x.ma_xe
+       AND c.trang_thai = 'HOAN_THANH'
+       AND c.ngay_chay > x.ngay_bao_duong_cuoi
+       AND c.ngay_chay <= @ngay_xem
+    GROUP BY
+        x.ma_xe,
+        x.bien_so,
+        x.ngay_bao_duong_cuoi
+) AS k
+
+ORDER BY ngay_den_han, k.bien_so;
+
+==================== FILE: sql\chuyenxe.sql ====================
+
+-- Chá»n schema cá»§a dá»± Ã¡n trÆ°á»›c khi cháº¡y. Táº¡o xe, tuyen_xe vÃ  tai_xe trÆ°á»›c.
+CREATE TABLE IF NOT EXISTS chuyen_xe (
+    ma_chuyen INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    ma_xe INT UNSIGNED NOT NULL,
+    ma_tuyen INT UNSIGNED NOT NULL,
+    ma_lai_xe INT UNSIGNED NOT NULL,
+    ma_phu_xe INT UNSIGNED NOT NULL,
+    ngay_chay DATE NOT NULL,
+    so_khach SMALLINT UNSIGNED NOT NULL,
+    gia_ve DECIMAL(12,0) NOT NULL,
+    trang_thai ENUM('DA_LEN_LICH', 'HOAN_THANH', 'DA_HUY')
+        NOT NULL DEFAULT 'DA_LEN_LICH',
+    do_dai_km_chot DECIMAL(8,2) NULL,
+    do_phuc_tap_chot TINYINT UNSIGNED NULL,
+
+    CONSTRAINT fk_chuyen_xe FOREIGN KEY (ma_xe) REFERENCES xe(ma_xe),
+    CONSTRAINT fk_chuyen_tuyen FOREIGN KEY (ma_tuyen) REFERENCES tuyen_xe(ma_tuyen),
+    CONSTRAINT fk_chuyen_lai FOREIGN KEY (ma_lai_xe) REFERENCES tai_xe(ma_tai_xe),
+    CONSTRAINT fk_chuyen_phu FOREIGN KEY (ma_phu_xe) REFERENCES tai_xe(ma_tai_xe),
+
+    CONSTRAINT chk_chuyen_vai_tro CHECK (ma_lai_xe <> ma_phu_xe),
+    CONSTRAINT chk_chuyen_gia_ve CHECK (gia_ve >= 0),
+    CONSTRAINT chk_chuyen_trang_thai
+        CHECK (trang_thai IN ('DA_LEN_LICH', 'HOAN_THANH', 'DA_HUY')),
+    CONSTRAINT chk_chuyen_thong_tin_chot CHECK (
+        (
+            trang_thai = 'HOAN_THANH'
+            AND do_dai_km_chot IS NOT NULL
+            AND do_phuc_tap_chot IS NOT NULL
+            AND do_dai_km_chot > 0
+            AND do_phuc_tap_chot IN (1, 2, 3)
+        ) OR (
+            trang_thai IN ('DA_LEN_LICH', 'DA_HUY')
+            AND do_dai_km_chot IS NULL
+            AND do_phuc_tap_chot IS NULL
+        )
+    ),
+
+    INDEX idx_chuyen_xe_trang_thai (ma_xe, trang_thai, so_khach),
+    INDEX idx_chuyen_lich (trang_thai, ngay_chay)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
+==================== FILE: sql\chuyenxemau.sql ====================
+
+-- Cháº¡y sau khi Ä‘Ã£ thÃªm xe máº«u vÃ  hai tÃ i xáº¿ giáº£.
+-- Äá»•i hai CCCD sang dá»¯ liá»‡u giáº£ TV3 thá»‘ng nháº¥t khi ghÃ©p project5.sql.
+SET @tv4_cccd_lai = '000000000401';
+SET @tv4_cccd_phu = '000000000402';
+SET @tv4_diem_dau = 'HÃ  Ná»™i';
+SET @tv4_diem_cuoi = 'Ninh BÃ¬nh';
+
+SET @tv4_xe = (SELECT ma_xe FROM xe WHERE bien_so = '29B-123.45' AND so_ghe >= 42);
+SET @tv4_lai = (SELECT ma_tai_xe FROM tai_xe WHERE cmt_cccd = @tv4_cccd_lai);
+SET @tv4_phu = (SELECT ma_tai_xe FROM tai_xe WHERE cmt_cccd = @tv4_cccd_phu);
+
+SET @tv4_tuyen_co_san = (
+    SELECT MIN(ma_tuyen) FROM tuyen_xe
+    WHERE diem_dau = @tv4_diem_dau AND diem_cuoi = @tv4_diem_cuoi
+      AND do_dai_km = 120.00 AND do_phuc_tap = 3
+);
+INSERT INTO tuyen_xe (diem_dau, diem_cuoi, do_dai_km, do_phuc_tap)
+SELECT @tv4_diem_dau, @tv4_diem_cuoi, 120.00, 3
+WHERE @tv4_tuyen_co_san IS NULL
+  AND @tv4_xe IS NOT NULL AND @tv4_lai IS NOT NULL AND @tv4_phu IS NOT NULL
+  AND @tv4_lai <> @tv4_phu;
+
+SET @tv4_tuyen = (
+    SELECT MIN(ma_tuyen) FROM tuyen_xe
+    WHERE diem_dau = @tv4_diem_dau AND diem_cuoi = @tv4_diem_cuoi
+      AND do_dai_km = 120.00 AND do_phuc_tap = 3
+);
+
+SET @tv4_chuyen_co_san = (
+    SELECT MIN(ma_chuyen) FROM chuyen_xe
+    WHERE ma_xe = @tv4_xe AND ma_lai_xe = @tv4_lai AND ma_phu_xe = @tv4_phu
+      AND ngay_chay = '2026-11-10' AND so_khach = 40 AND gia_ve = 120000
+      AND trang_thai = 'HOAN_THANH'
+      AND do_dai_km_chot = 120.00 AND do_phuc_tap_chot = 3
+);
+
+INSERT INTO chuyen_xe (
+    ma_xe, ma_tuyen, ma_lai_xe, ma_phu_xe, ngay_chay,
+    so_khach, gia_ve, trang_thai, do_dai_km_chot, do_phuc_tap_chot
+)
+SELECT
+    @tv4_xe, @tv4_tuyen, @tv4_lai, @tv4_phu, '2026-11-10',
+    40, 120000, 'HOAN_THANH', 120.00, 3
+WHERE @tv4_xe IS NOT NULL AND @tv4_tuyen IS NOT NULL
+  AND @tv4_lai IS NOT NULL AND @tv4_phu IS NOT NULL AND @tv4_lai <> @tv4_phu
+  AND @tv4_chuyen_co_san IS NULL;
+
+SELECT CASE
+    WHEN @tv4_xe IS NULL THEN 'Kiá»ƒm tra biá»ƒn sá»‘ vÃ  sá»‘ gháº¿ cá»§a xe máº«u.'
+    WHEN @tv4_lai IS NULL OR @tv4_phu IS NULL OR @tv4_lai = @tv4_phu
+        THEN 'Cáº§n hai tÃ i xáº¿ máº«u khÃ¡c nhau. Kiá»ƒm tra láº¡i CCCD máº«u.'
+    ELSE 'Chuyáº¿n máº«u Ä‘Ã£ sáºµn sÃ ng.'
+END AS ket_qua_du_lieu_mau;
+
+
+==================== FILE: sql\project5.sql ====================
+
+
+-- =========================================
+-- TV2: TAO BANG TUYEN XE
+-- =========================================
+
+CREATE TABLE IF NOT EXISTS tuyen_xe (
+    ma_tuyen INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    diem_dau VARCHAR(100) NOT NULL,
+    diem_cuoi VARCHAR(100) NOT NULL,
+    do_dai_km DECIMAL(8,2) NOT NULL,
+    do_phuc_tap TINYINT UNSIGNED NOT NULL,
+
+    CHECK (do_dai_km > 0),
+    CHECK (do_phuc_tap IN (1, 2, 3))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
+-- =========================================
+-- TV2: DU LIEU MAU TUYEN XE
+-- =========================================
+
+INSERT INTO tuyen_xe
+    (diem_dau, diem_cuoi, do_dai_km, do_phuc_tap)
+VALUES
+    ('Ha Noi', 'Hai Phong', 120.00, 2),
+    ('Ha Noi', 'Da Nang', 760.00, 3),
+    ('Ha Noi', 'Nam Dinh', 90.00, 1),
+    ('Ha Noi', 'Thanh Hoa', 160.00, 2),
+    ('Ha Noi', 'Lao Cai', 300.00, 3);
+
+
+-- =========================================
+-- TV2: TRUY VAN BAO CAO DOANH THU TUNG XE
+-- =========================================
+
+SET @ngay_bat_dau = '2026-11-01';
+SET @ngay_ket_thuc = '2026-11-30';
+
+SELECT
+    x.ma_xe,
+    x.bien_so,
+    COUNT(c.ma_chuyen) AS so_chuyen,
+    COALESCE(SUM(c.so_khach), 0) AS tong_khach,
+    COALESCE(SUM(c.so_khach * c.gia_ve), 0) AS doanh_thu
+FROM xe x
+LEFT JOIN chuyen_xe c
+    ON x.ma_xe = c.ma_xe
+    AND c.trang_thai = 'HOAN_THANH'
+    AND c.ngay_chay >= @ngay_bat_dau
+    AND c.ngay_chay < DATE_ADD(@ngay_ket_thuc, INTERVAL 1 DAY)
+GROUP BY
+    x.ma_xe,
+    x.bien_so
+ORDER BY x.bien_so;
+
+
+-- =========================================
+-- TV2: TRUY VAN THONG KE TUYEN XE THEO THANG
+-- =========================================
+
+SET @thang = '2026-11-01';
+
+SELECT
+    t.ma_tuyen,
+    t.diem_dau,
+    t.diem_cuoi,
+    t.do_dai_km,
+    COUNT(c.ma_chuyen) AS so_chuyen,
+    COALESCE(SUM(c.so_khach), 0) AS tong_khach
+FROM tuyen_xe t
+LEFT JOIN chuyen_xe c
+    ON t.ma_tuyen = c.ma_tuyen
+    AND c.trang_thai = 'HOAN_THANH'
+    AND c.ngay_chay >= @thang
+    AND c.ngay_chay < DATE_ADD(@thang, INTERVAL 1 MONTH)
+GROUP BY
+    t.ma_tuyen,
+    t.diem_dau,
+    t.diem_cuoi,
+    t.do_dai_km
+ORDER BY t.ma_tuyen;
+
+
+==================== FILE: sql\tai_xe.sql ====================
+
+-- Project 5 - TV3
+-- Báº£ng tai_xe, dá»¯ liá»‡u máº«u vÃ  cÃ¢u truy váº¥n tÃ­nh lÆ°Æ¡ng thÃ¡ng.
+
+USE quan_ly_van_tai;
+
+CREATE TABLE IF NOT EXISTS tai_xe (
+    ma_tai_xe INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    ho_ten VARCHAR(100) NOT NULL,
+    cmt_cccd VARCHAR(20) NOT NULL UNIQUE,
+    ma_bang_lai VARCHAR(30) NOT NULL UNIQUE,
+    loai_bang_lai VARCHAR(20) NOT NULL,
+    dia_chi VARCHAR(255) NOT NULL,
+    ngay_sinh DATE NOT NULL,
+    ngay_bat_dau_lai_xe DATE NOT NULL,
+    CONSTRAINT chk_tai_xe_ngay_bat_dau
+        CHECK (ngay_bat_dau_lai_xe > ngay_sinh)
+) ENGINE = InnoDB DEFAULT CHARACTER SET = utf8mb4;
+
+-- Dá»¯ liá»‡u máº«u phá»¥c vá»¥ kiá»ƒm tra chung (tá»‘i thiá»ƒu 2 tÃ i xáº¿ khÃ¡c nhau cho lÃ¡i xe vÃ  phá»¥ xe)
+INSERT INTO tai_xe (
+    ho_ten, cmt_cccd, ma_bang_lai, loai_bang_lai,
+    dia_chi, ngay_sinh, ngay_bat_dau_lai_xe
+) VALUES
+    ('Nguyá»…n VÄƒn An', '001085001234', 'B2-01020304', 'D', 'Cáº§u Giáº¥y, HÃ  Ná»™i', '1985-05-12', '2010-08-01'),
+    ('Tráº§n Minh BÃ¬nh', '001092005678', 'B2-05060708', 'E', 'Thanh XuÃ¢n, HÃ  Ná»™i', '1992-11-20', '2016-03-15'),
+    ('LÃª HoÃ ng CÆ°á»ng', '036095009999', 'B2-09101112', 'D', 'Äá»‘ng Äa, HÃ  Ná»™i', '1995-02-10', '2019-06-01')
+ON DUPLICATE KEY UPDATE ma_tai_xe = tai_xe.ma_tai_xe;
+
+-- =========================================
+-- TV3: TRUY Váº¤N BÃO CÃO LÆ¯Æ NG TÃ€I Xáº¾ THEO THÃNG
+-- Tham sá»‘: @thang (ngÃ y Ä‘áº§u thÃ¡ng, VD: '2026-11-01'), @ngay_gioi_han (ngÃ y cuá»‘i ká»³ hoáº·c hÃ´m nay, VD: '2026-11-11')
+-- =========================================
+SET @thang = '2026-11-01';
+SET @ngay_gioi_han = '2026-11-11';
+
+SELECT
+    tx.ma_tai_xe,
+    tx.ho_ten,
+    COALESCE(lx.so_chuyen_lai, 0) AS so_chuyen_lai,
+    COALESCE(px.so_chuyen_phu, 0) AS so_chuyen_phu,
+    COALESCE(lx.luong_lai, 0) + COALESCE(px.luong_phu, 0) AS tong_luong
+FROM tai_xe tx
+LEFT JOIN (
+    SELECT
+        ma_lai_xe,
+        COUNT(*) AS so_chuyen_lai,
+        SUM(
+            200000 * CASE do_phuc_tap_chot
+                WHEN 1 THEN 1.00
+                WHEN 2 THEN 1.25
+                WHEN 3 THEN 1.50
+                ELSE 0
+            END
+        ) AS luong_lai
+    FROM chuyen_xe
+    WHERE trang_thai = 'HOAN_THANH'
+      AND ngay_chay >= @thang
+      AND ngay_chay < DATE_ADD(@thang, INTERVAL 1 MONTH)
+      AND ngay_chay <= @ngay_gioi_han
+    GROUP BY ma_lai_xe
+) lx ON tx.ma_tai_xe = lx.ma_lai_xe
+LEFT JOIN (
+    SELECT
+        ma_phu_xe,
+        COUNT(*) AS so_chuyen_phu,
+        SUM(
+            100000 * CASE do_phuc_tap_chot
+                WHEN 1 THEN 1.00
+                WHEN 2 THEN 1.25
+                WHEN 3 THEN 1.50
+                ELSE 0
+            END
+        ) AS luong_phu
+    FROM chuyen_xe
+    WHERE trang_thai = 'HOAN_THANH'
+      AND ngay_chay >= @thang
+      AND ngay_chay < DATE_ADD(@thang, INTERVAL 1 MONTH)
+      AND ngay_chay <= @ngay_gioi_han
+    GROUP BY ma_phu_xe
+) px ON tx.ma_tai_xe = px.ma_phu_xe
+ORDER BY tx.ho_ten, tx.ma_tai_xe;
+
+==================== FILE: sql\tuyen_xe.sql ====================
+
+
+CREATE TABLE IF NOT EXISTS tuyen_xe (
+    ma_tuyen INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    diem_dau VARCHAR(100) NOT NULL,
+    diem_cuoi VARCHAR(100) NOT NULL,
+    do_dai_km DECIMAL(8,2) NOT NULL,
+    do_phuc_tap TINYINT UNSIGNED NOT NULL,
+
+    CONSTRAINT chk_tuyen_do_dai
+        CHECK (do_dai_km > 0),
+
+    CONSTRAINT chk_tuyen_do_phuc_tap
+        CHECK (do_phuc_tap IN (1, 2, 3))
+) ENGINE = InnoDB
+  DEFAULT CHARACTER SET = utf8mb4;
+  
+INSERT INTO tuyen_xe (diem_dau, diem_cuoi, do_dai_km, do_phuc_tap)
+VALUES
+('Ha Noi', 'Hai Phong', 120.00, 2),
+('Ha Noi', 'Da Nang', 760.00, 3),
+('Ha Noi', 'Nam Dinh', 90.00, 1),
+('Ha Noi', 'Thanh Hoa', 160.00, 2),
+('Ha Noi', 'Lao Cai', 300.00, 3);
+
+SELECT * FROM tuyen_xe;
+
+==================== FILE: sql\xe.sql ====================
+
+-- Project 5 - TV1
+-- Báº£ng xe, dá»¯ liá»‡u máº«u vÃ  truy váº¥n kiá»ƒm tra.
+
+CREATE DATABASE IF NOT EXISTS quan_ly_van_tai
+    DEFAULT CHARACTER SET utf8mb4;
+USE quan_ly_van_tai;
+
+CREATE TABLE IF NOT EXISTS xe (
+    ma_xe INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    bien_so VARCHAR(20) NOT NULL UNIQUE,
+    mau_xe VARCHAR(80) NOT NULL,
+    hang_san_xuat VARCHAR(80) NOT NULL,
+    model VARCHAR(80) NOT NULL,
+    doi_xe SMALLINT UNSIGNED NOT NULL,
+    ngay_dua_vao_su_dung DATE NOT NULL,
+    so_ghe SMALLINT UNSIGNED NOT NULL,
+    ngay_bao_duong_cuoi DATE NOT NULL,
+    CONSTRAINT chk_xe_so_ghe CHECK (so_ghe >= 3),
+    CONSTRAINT chk_xe_ngay_bao_duong
+        CHECK (ngay_bao_duong_cuoi >= ngay_dua_vao_su_dung)
+) ENGINE = InnoDB DEFAULT CHARACTER SET = utf8mb4;
+
+-- DÃ¹ng biá»ƒn sá»‘ Ä‘á»ƒ chá»‰ táº¡o má»™t dÃ²ng máº«u khi cháº¡y láº¡i file.
+INSERT INTO xe (
+    bien_so, mau_xe, hang_san_xuat, model, doi_xe,
+    ngay_dua_vao_su_dung, so_ghe, ngay_bao_duong_cuoi
+) VALUES (
+    '29B-123.45', 'Tráº¯ng', 'Thaco', 'Bluesky', 2019,
+    '2020-01-15', 45, '2026-10-01'
+)
+ON DUPLICATE KEY UPDATE ma_xe = xe.ma_xe;
+
+-- Äá»‘i chiáº¿u sá»©c chá»©a vÃ  sá»‘ nÄƒm sá»­ dá»¥ng cá»§a xe máº«u.
+SELECT
+    ma_xe,
+    bien_so,
+    so_ghe,
+    so_ghe - 2 AS so_khach_toi_da,
+    TIMESTAMPDIFF(YEAR, ngay_dua_vao_su_dung, CURRENT_DATE) AS so_nam_su_dung
+FROM xe
+WHERE bien_so = '29B-123.45';
+
+==================== FILE: static\style.css ====================
+
+
+/* ===== 1. CAU HINH CHUNG ===== */
+
+:root {
+    --primary: #205a8a;
+    --sidebar: #19334f;
+    --background: #f4f7fb;
+    --white: #ffffff;
+    --text: #25364a;
+    --muted: #718096;
+    --border: #e2e8f0;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    font-family: "Segoe UI", Arial, sans-serif;
+    background: var(--background);
+    color: var(--text);
+    font-size: 15px;
+}
+
+a {
+    color: var(--primary);
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+/* ===== 2. BO CUC CHUNG ===== */
+
+.app-layout {
+    display: flex;
+    min-height: 100vh;
+}
+
+/* ===== 3. MENU BEN TRAI ===== */
+
+.sidebar {
+    width: 250px;
+    flex-shrink: 0;
+    background: var(--sidebar);
+    color: white;
+    padding: 24px 15px;
+    display: flex;
+    flex-direction: column;
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: white;
+    padding: 10px;
+    margin-bottom: 30px;
+}
+
+.brand:hover {
+    text-decoration: none;
+}
+
+.brand-icon {
+    background: #287ea6;
+    padding: 12px;
+    border-radius: 10px;
+    font-weight: bold;
+}
+
+.brand strong {
+    display: block;
+    font-size: 13px;
+}
+
+.brand small {
+    display: block;
+    color: #b7c8d9;
+    margin-top: 5px;
+}
+
+.menu-label {
+    color: #9db3c9;
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 1px;
+    margin: 18px 12px 10px;
+}
+
+.menu {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+}
+
+.menu-item {
+    display: block;
+    padding: 12px 15px;
+    color: #dce8f4;
+    border-radius: 8px;
+}
+
+.menu-item:hover,
+.menu-item.active {
+    background: #315777;
+    color: white;
+    text-decoration: none;
+}
+
+.menu-item.active {
+    border-left: 4px solid #67c7e8;
+}
+
+.menu-item.disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.sidebar-footer {
+    margin-top: auto;
+    padding: 20px 10px 5px;
+    color: #a9bdcf;
+    font-size: 12px;
+}
+
+/* ===== 4. NOI DUNG BEN PHAI ===== */
+
+.app-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.topbar {
+    background: white;
+    padding: 20px 35px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.topbar small {
+    color: var(--muted);
+    font-size: 11px;
+    letter-spacing: 1px;
+}
+
+.topbar h2 {
+    margin: 5px 0 0;
+    font-size: 18px;
+}
+
+.topbar-status {
+    border: 1px solid var(--border);
+    padding: 8px 15px;
+    border-radius: 20px;
+    color: var(--muted);
+    font-size: 13px;
+}
+
+.content {
+    padding: 35px;
+    flex: 1;
+}
+
+.content h1 {
+    margin-top: 0;
+    margin-bottom: 20px;
+    font-size: 27px;
+}
+
+.footer {
+    padding: 18px 35px;
+    border-top: 1px solid var(--border);
+    color: var(--muted);
+    font-size: 12px;
+}
+
+/* ===== 5. THE NOI DUNG ===== */
+
+.card {
+    background: white;
+    padding: 25px;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    margin-bottom: 20px;
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.03);
+}
+
+.card h3 {
+    margin-top: 0;
+}
+
+.card-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 18px;
+}
+
+/* ===== 6. NUT BAM ===== */
+
+.btn {
+    display: inline-block;
+    padding: 10px 16px;
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    background: white;
+    color: var(--text);
+    cursor: pointer;
+    font: inherit;
+    margin: 3px 4px 3px 0;
+}
+
+.btn:hover {
+    text-decoration: none;
+    background: #edf2f7;
+}
+
+.btn-primary {
+    background: var(--primary);
+    color: white;
+    border-color: var(--primary);
+}
+
+.btn-primary:hover {
+    background: #16436a;
+    color: white;
+}
+
+.btn-secondary {
+    background: #64748b;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: #475569;
+    color: white;
+}
+
+.btn-danger {
+    background: #dc3545;
+    color: white;
+}
+
+.btn-danger:hover {
+    background: #b02a37;
+    color: white;
+}
+
+.text-danger {
+    color: #dc3545;
+}
+
+/* ===== 7. BANG DU LIEU ===== */
+
+.table {
+    width: 100%;
+    border-collapse: collapse;
+    background: white;
+    border-radius: 8px;
+}
+
+.table th,
+.table td {
+    padding: 13px;
+    border-bottom: 1px solid var(--border);
+    text-align: left;
+}
+
+.table th {
+    background: #eaf0f7;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.table tbody tr:hover {
+    background: #f8fafc;
+}
+
+/* ===== 8. FORM NHAP LIEU ===== */
+
+.mb-3 {
+    margin-bottom: 18px;
+}
+
+.form-label {
+    display: block;
+    margin-bottom: 7px;
+    font-weight: 600;
+}
+
+.form-control,
+.form-select,
+input:not([type="hidden"]),
+select,
+textarea {
+    padding: 10px;
+    border: 1px solid #cbd5e1;
+    border-radius: 7px;
+    font: inherit;
+    max-width: 100%;
+}
+
+.form-control,
+.form-select {
+    display: block;
+    width: 100%;
+    max-width: 600px;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+    outline: 2px solid #93c5fd;
+}
+
+[aria-invalid="true"] {
+    border-color: #dc3545;
+}
+
+[role="alert"] {
+    color: #a52737;
+}
+
+/* ===== 9. GIAO DIEN MOBILE ===== */
+
+@media (max-width: 768px) {
+    .app-layout {
+        flex-direction: column;
+    }
+
+    .sidebar {
+        width: 100%;
+    }
+
+    .menu {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+    }
+
+    .topbar {
+        padding: 18px;
+    }
+
+    .topbar-status {
+        display: none;
+    }
+
+    .content {
+        padding: 18px;
+    }
+
+    .card-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .table {
+        display: block;
+        overflow-x: auto;
+    }
+}
+
+/* ===== 10. DASHBOARD ===== */
+
+.dashboard-stats {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
+    margin: 25px 0;
+}
+
+.stat-card {
+    background: white;
+    padding: 25px;
+    border: 1px solid #e2e8f0;
+    border-top: 4px solid #205a8a;
+    border-radius: 12px;
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.04);
+}
+
+.stat-label {
+    font-size: 15px;
+    color: #64748b;
+    margin: 0;
+}
+
+.stat-number {
+    font-size: 38px;
+    color: #19334f;
+    font-weight: 700;
+    margin: 15px 0 8px;
+}
+
+.stat-description {
+    color: #718096;
+    font-size: 13px;
+    margin: 0;
+}
+
+.dashboard-notice {
+    background: #fff8e8;
+    border: 1px solid #f0d89c;
+    border-radius: 8px;
+    padding: 12px 18px;
+    color: #865900;
+    margin-bottom: 25px;
+}
+
+.dashboard-notice p {
+    margin: 5px 0;
+}
+
+/* Responsive Dashboard */
+
+@media (max-width: 1100px) {
+    .dashboard-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 768px) {
+    .dashboard-stats {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* ===== 11. BAO DUONG ===== */
+
+.bao-duong-warning {
+    background: #fff8e8;
+    border: 1px solid #f0d89c;
+    border-radius: 8px;
+    padding: 15px;
+    color: #865900;
+    margin-bottom: 20px;
+}
+
+.bao-duong-success {
+    background: #e7f6ee;
+    border: 1px solid #a9dcc1;
+    border-radius: 8px;
+    padding: 15px;
+    color: #17663d;
+    margin-bottom: 20px;
+}
+
+.card h2 {
+    font-size: 20px;
+    margin-top: 0;
+    margin-bottom: 18px;
+}
+
+.card form {
+    max-width: 600px;
+}
+
+
+/* GIAO DIEN BAO DUONG */
+
+.bd-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+}
+
+.bd-warning {
+    background: #fff8e8;
+    color: #865900;
+    border: 1px solid #f0d89c;
+    border-radius: 8px;
+    padding: 15px;
+    margin: 15px 0;
+}
+
+.bd-success {
+    background: #e7f6ee;
+    color: #17663d;
+    border: 1px solid #a9dcc1;
+    border-radius: 8px;
+    padding: 15px;
+    margin: 15px 0;
+}
+
+.card h2 {
+    font-size: 20px;
+    margin-top: 0;
+    margin-bottom: 18px;
+}
+
+.card form {
+    max-width: 600px;
+}
+
+
+==================== FILE: templates\bao_cao\doanh_thu.html ====================
+
+
+{% extends "base.html" %}
+
+{% block title %}BÃ¡o cÃ¡o doanh thu{% endblock %}
+
+{% block content %}
+<h1>BÃ¡o cÃ¡o doanh thu theo xe</h1>
+
+<form method="get" action="{{ url_for('doanh_thu.doanh_thu') }}">
+    <div>
+        <label for="tu_ngay">Tá»« ngÃ y:</label>
+        <input
+            type="date"
+            id="tu_ngay"
+            name="tu_ngay"
+            value="{{ tu_ngay }}"
+            required
+        >
+    </div>
+
+    <div>
+        <label for="den_ngay">Äáº¿n ngÃ y:</label>
+        <input
+            type="date"
+            id="den_ngay"
+            name="den_ngay"
+            value="{{ den_ngay }}"
+            required
+        >
+    </div>
+
+    <button type="submit">Thá»‘ng kÃª</button>
+</form>
+
+{% if loi %}
+    <p role="alert">{{ loi }}</p>
+{% endif %}
+
+{% if da_loc %}
+    {% if danh_sach_doanh_thu %}
+        <div style="overflow-x: auto;">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Biá»ƒn sá»‘</th>
+                        <th>Sá»‘ chuyáº¿n</th>
+                        <th>Tá»•ng khÃ¡ch</th>
+                        <th>Doanh thu</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for xe in danh_sach_doanh_thu %}
+                        <tr>
+                            <td>{{ xe.bien_so }}</td>
+                            <td>{{ xe.so_chuyen }}</td>
+                            <td>{{ xe.tong_khach }}</td>
+                            <td>
+                                {{ "{:,.0f}".format(xe.doanh_thu) }} Ä‘
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p>KhÃ´ng cÃ³ dá»¯ liá»‡u xe trong há»‡ thá»‘ng.</p>
+    {% endif %}
+{% endif %}
+
+{% endblock %}
+
+
+==================== FILE: templates\bao_cao\thong_ke_tuyen.html ====================
+
+
+{% extends "base.html" %}
+
+{% block title %}Thá»‘ng kÃª tuyáº¿n xe{% endblock %}
+
+{% block content %}
+<h1>Thá»‘ng kÃª tuyáº¿n xe theo thÃ¡ng</h1>
+
+<form method="GET">
+    <label for="thang">Chá»n thÃ¡ng:</label>
+
+    <input
+        type="month"
+        id="thang"
+        name="thang"
+        value="{{ thang }}"
+        required
+    >
+
+    <button type="submit">Thá»‘ng kÃª</button>
+</form>
+
+<table border="1" cellpadding="8" cellspacing="0">
+    <thead>
+        <tr>
+            <th>MÃ£ tuyáº¿n</th>
+            <th>Äiá»ƒm Ä‘áº§u</th>
+            <th>Äiá»ƒm cuá»‘i</th>
+            <th>Äá»™ dÃ i (km)</th>
+            <th>Sá»‘ chuyáº¿n</th>
+            <th>Tá»•ng sá»‘ khÃ¡ch</th>
+        </tr>
+    </thead>
+
+    <tbody>
+        {% for tuyen in ds_tuyen %}
+        <tr>
+            <td>{{ tuyen.ma_tuyen }}</td>
+            <td>{{ tuyen.diem_dau }}</td>
+            <td>{{ tuyen.diem_cuoi }}</td>
+            <td>{{ tuyen.do_dai_km }}</td>
+            <td>{{ tuyen.so_chuyen }}</td>
+            <td>{{ tuyen.tong_khach }}</td>
+        </tr>
+        {% else %}
+        <tr>
+            <td colspan="6">ChÆ°a cÃ³ tuyáº¿n xe nÃ o.</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+{% endblock %}
+
+
+==================== FILE: templates\bao_duong\cap_nhat.html ====================
+
+
+{% extends "base.html" %}
+
+{% block title %}Ghi nháº­n báº£o dÆ°á»¡ng{% endblock %}
+
+{% block content %}
+
+<h1>Ghi nháº­n báº£o dÆ°á»¡ng xe</h1>
+
+<div class="card">
+
+    {% if loi %}
+        <p class="text-danger" role="alert">
+            {{ loi }}
+        </p>
+    {% endif %}
+
+    {% if xe %}
+
+        <h3>Biá»ƒn sá»‘: {{ xe.bien_so }}</h3>
+
+        <p>
+            NgÃ y báº£o dÆ°á»¡ng cuá»‘i:
+            <strong>
+                {{ xe.ngay_bao_duong_cuoi.strftime('%d/%m/%Y') }}
+            </strong>
+        </p>
+
+        <form method="POST">
+
+            <div class="mb-3">
+                <label class="form-label"
+                       for="ngay_bao_duong_moi">
+                    NgÃ y báº£o dÆ°á»¡ng má»›i
+                </label>
+
+                <input
+                    class="form-control"
+                    type="date"
+                    id="ngay_bao_duong_moi"
+                    name="ngay_bao_duong_moi"
+                    min="{{ xe.ngay_bao_duong_cuoi.isoformat() }}"
+                    max="{{ hom_nay.isoformat() }}"
+                    value="{{ ngay_nhap }}"
+                    required
+                >
+            </div>
+
+            <button class="btn btn-primary"
+                    type="submit">
+                LÆ°u báº£o dÆ°á»¡ng
+            </button>
+
+            <a class="btn btn-secondary"
+               href="{{ url_for('bao_duong.danh_sach') }}">
+                Quay láº¡i
+            </a>
+        </form>
+
+    {% else %}
+        <a href="{{ url_for('bao_duong.danh_sach') }}">
+            Quay láº¡i danh sÃ¡ch
+        </a>
+    {% endif %}
+
+</div>
+
+{% endblock %}
+
+
+==================== FILE: templates\bao_duong\index.html ====================
+
+
+{% extends "base.html" %}
+
+{% block title %}Háº¡n báº£o dÆ°á»¡ng{% endblock %}
+
+{% block content %}
+
+<h1>BÃ¡o cÃ¡o háº¡n báº£o dÆ°á»¡ng</h1>
+
+<p>
+    NgÃ y xem: {{ ngay_xem.strftime('%d/%m/%Y') }}
+</p>
+
+{% if request.args.get('saved') == '1' %}
+    <p class="bd-success">
+        ÄÃ£ cáº­p nháº­t báº£o dÆ°á»¡ng thÃ nh cÃ´ng!
+    </p>
+{% endif %}
+
+{% if loi %}
+    <p class="text-danger" role="alert">
+        {{ loi }}
+    </p>
+{% endif %}
+
+{% if thong_bao %}
+    <p class="bd-warning">
+        {{ thong_bao }}
+    </p>
+{% endif %}
+
+
+{% macro bang_bao_cao(ds) %}
+<div class="bd-table-wrap">
+    <table class="table">
+        <thead>
+            <tr>
+                <th>Biá»ƒn sá»‘</th>
+                <th>Báº£o dÆ°á»¡ng cuá»‘i</th>
+                <th>Km quy Ä‘á»•i</th>
+                <th>NgÃ y Ä‘áº¿n háº¡n</th>
+                <th>Thao tÃ¡c</th>
+            </tr>
+        </thead>
+
+        <tbody>
+            {% for xe in ds %}
+            <tr>
+                <td>{{ xe.bien_so }}</td>
+
+                <td>
+                    {{ xe.ngay_bao_duong_cuoi.strftime('%d/%m/%Y') }}
+                </td>
+
+                <td>
+                    {{ "%.2f"|format(xe.tong_km_quy_doi) }} km
+                </td>
+
+                <td>
+                    {{ xe.ngay_den_han.strftime('%d/%m/%Y') }}
+                </td>
+
+                <td>
+                    <a class="btn btn-primary"
+                       href="{{ url_for('bao_duong.cap_nhat', ma_xe=xe.ma_xe) }}">
+                        Ghi nháº­n
+                    </a>
+                </td>
+            </tr>
+            {% else %}
+            <tr>
+                <td colspan="5">KhÃ´ng cÃ³ xe.</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% endmacro %}
+
+
+{% if not loi %}
+
+    {% if thong_bao %}
+
+    <div class="card">
+        <h2>Danh sÃ¡ch xe</h2>
+
+        <div class="bd-table-wrap">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Biá»ƒn sá»‘</th>
+                        <th>Báº£o dÆ°á»¡ng cuá»‘i</th>
+                        <th>Thao tÃ¡c</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {% for xe in xe_cho_du_lieu %}
+                    <tr>
+                        <td>{{ xe.bien_so }}</td>
+
+                        <td>
+                            {{ xe.ngay_bao_duong_cuoi.strftime('%d/%m/%Y') }}
+                        </td>
+
+                        <td>
+                            <a class="btn btn-primary"
+                               href="{{ url_for('bao_duong.cap_nhat', ma_xe=xe.ma_xe) }}">
+                                Ghi nháº­n báº£o dÆ°á»¡ng
+                            </a>
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="3">ChÆ°a cÃ³ xe.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    {% else %}
+
+    <div class="card">
+        <h2>Xe quÃ¡ háº¡n ({{ qua_han|length }})</h2>
+        {{ bang_bao_cao(qua_han) }}
+    </div>
+
+    <div class="card">
+        <h2>Äáº¿n háº¡n hÃ´m nay ({{ den_han|length }})</h2>
+        {{ bang_bao_cao(den_han) }}
+    </div>
+
+    <div class="card">
+        <h2>Xe cÃ²n háº¡n ({{ con_han|length }})</h2>
+        {{ bang_bao_cao(con_han) }}
+    </div>
+
+    {% endif %}
+
+{% endif %}
+
+{% endblock %}
+
+
+==================== FILE: templates\chuyenxe\form.html ====================
+
+{% extends "base.html" %}
+{% set tieu_de = {
+    'them': 'Láº­p chuyáº¿n xe',
+    'sua': 'Sá»­a chuyáº¿n xe',
+    'hoan_thanh': 'XÃ¡c nháº­n hoÃ n thÃ nh chuyáº¿n'
+}[hanh_dong] %}
+
+{% macro thong_bao_loi(ten) %}
+    {% if ten in loi %}
+        <p class="text-danger" id="loi-{{ ten }}">{{ loi[ten] }}</p>
+    {% endif %}
+{% endmacro %}
+
+{% macro o_nhap(ten, nhan, kieu, nho_nhat=none, lon_nhat=none) %}
+    <div class="mb-3">
+        <label class="form-label" for="{{ ten }}">{{ nhan }}</label>
+        <input class="form-control" type="{{ kieu }}" id="{{ ten }}" name="{{ ten }}"
+               value="{{ form.get(ten, '') }}" required
+               {% if kieu == 'number' %}step="1"{% endif %}
+               {% if nho_nhat is not none %}min="{{ nho_nhat }}"{% endif %}
+               {% if lon_nhat is not none %}max="{{ lon_nhat }}"{% endif %}
+               {% if ten == 'so_khach' %}
+                   aria-describedby="gioi-han-khach{{ ' loi-' ~ ten if ten in loi else '' }}"
+               {% elif ten in loi %}
+                   aria-describedby="loi-{{ ten }}"
+               {% endif %}
+               {% if ten in loi %}aria-invalid="true"{% endif %}>
+        {{ thong_bao_loi(ten) }}
+    </div>
+{% endmacro %}
+
+{% macro o_chon(ten, nhan, cac_muc, khoa, du_lieu) %}
+    <div class="mb-3">
+        <label class="form-label" for="{{ ten }}">{{ nhan }}</label>
+        <select class="form-select" id="{{ ten }}" name="{{ ten }}"
+                {% if khoa %}disabled{% else %}required{% endif %}
+                {% if ten in loi %}aria-invalid="true" aria-describedby="loi-{{ ten }}"{% endif %}>
+            <option value="">â€” Chá»n {{ nhan|lower }} â€”</option>
+
+            {% for muc in cac_muc %}
+                {% if ten == 'ma_xe' %}
+                    {% set ma, nhan_muc = muc.ma_xe, muc.bien_so %}
+                {% elif ten == 'ma_tuyen' %}
+                    {% set ma, nhan_muc = muc.ma_tuyen, muc.diem_dau ~ ' â†’ ' ~ muc.diem_cuoi %}
+                {% else %}
+                    {% set ma, nhan_muc = muc.ma_tai_xe, muc.ho_ten ~ ' (#' ~ muc.ma_tai_xe ~ ')' %}
+                {% endif %}
+
+                <option value="{{ ma }}"
+                        {% if ten == 'ma_xe' %}data-so-ghe="{{ muc.so_ghe }}"{% endif %}
+                        {% if du_lieu.get(ten, '')|string == ma|string %}selected{% endif %}>
+                    {{ nhan_muc }}
+                </option>
+            {% endfor %}
+        </select>
+
+        {% if khoa %}
+            <input type="hidden" name="{{ ten }}" value="{{ du_lieu.get(ten, '') }}">
+        {% endif %}
+        {{ thong_bao_loi(ten) }}
+    </div>
+{% endmacro %}
+
+{% block title %}{{ tieu_de }}{% endblock %}
+
+{% block content %}
+{% set xac_nhan = hanh_dong == 'hoan_thanh' %}
+{% set du_lieu_hien_thi = form if not xac_nhan or chuyen is none else chuyen %}
+
+<h1>{{ tieu_de }}{% if chuyen %} #{{ chuyen.ma_chuyen }}{% endif %}</h1>
+
+{% if loi.get('chung') %}
+    <p role="alert">{{ loi.chung }}</p>
+{% endif %}
+
+{% set co_danh_muc = danh_muc.get('xe') and danh_muc.get('tuyen') and danh_muc.get('tai_xe', [])|length >= 2 %}
+{% if danh_muc and not co_danh_muc %}
+    <p role="alert">Cáº§n Ã­t nháº¥t má»™t xe, má»™t tuyáº¿n vÃ  hai tÃ i xáº¿ Ä‘á»ƒ lÆ°u chuyáº¿n.</p>
+{% endif %}
+
+<form method="post">
+    {{ o_chon('ma_xe', 'Xe', danh_muc.get('xe', []), xac_nhan, du_lieu_hien_thi) }}
+    <p id="gioi-han-khach" aria-live="polite">Chá»n xe Ä‘á»ƒ xem sá»‘ khÃ¡ch tá»‘i Ä‘a.</p>
+
+    {{ o_chon('ma_tuyen', 'Tuyáº¿n xe', danh_muc.get('tuyen', []), xac_nhan, du_lieu_hien_thi) }}
+    {{ o_chon('ma_lai_xe', 'LÃ¡i xe', danh_muc.get('tai_xe', []), xac_nhan, du_lieu_hien_thi) }}
+    {{ o_chon('ma_phu_xe', 'Phá»¥ xe', danh_muc.get('tai_xe', []), xac_nhan, du_lieu_hien_thi) }}
+
+    {{ o_nhap('ngay_chay', 'NgÃ y cháº¡y thá»±c táº¿' if xac_nhan else 'NgÃ y cháº¡y dá»± kiáº¿n',
+              'date', nho_nhat='1000-01-01', lon_nhat=hom_nay if xac_nhan else none) }}
+    {{ o_nhap('so_khach', 'Sá»‘ khÃ¡ch', 'number', 0, 65535) }}
+    {{ o_nhap('gia_ve', 'GiÃ¡ vÃ© (Ä‘á»“ng)', 'number', 0, 999999999999) }}
+
+    <button class="btn btn-primary" type="submit" {% if not co_danh_muc %}disabled{% endif %}>
+        {{ 'XÃ¡c nháº­n hoÃ n thÃ nh' if xac_nhan else 'LÆ°u chuyáº¿n' }}
+    </button>
+    <a class="btn btn-secondary" href="{{ url_for('chuyen_xe.danh_sach') }}">Quay láº¡i</a>
+</form>
+
+<script>
+    const xeDangChon = document.getElementById("ma_xe");
+    const soKhach = document.getElementById("so_khach");
+    const gioiHan = document.getElementById("gioi-han-khach");
+
+    function capNhatGioiHan() {
+        const soGhe = xeDangChon.selectedOptions[0]?.dataset.soGhe;
+        if (soGhe) {
+            const toiDa = Number(soGhe) - 2;
+            soKhach.max = toiDa;
+            gioiHan.textContent = `Xe nÃ y chá»Ÿ tá»‘i Ä‘a ${toiDa} khÃ¡ch.`;
+        } else {
+            soKhach.max = 65535;
+            gioiHan.textContent = "Chá»n xe Ä‘á»ƒ xem sá»‘ khÃ¡ch tá»‘i Ä‘a.";
+        }
+    }
+
+    xeDangChon.addEventListener("change", capNhatGioiHan);
+    capNhatGioiHan();
+</script>
+{% endblock %}
+
+==================== FILE: templates\chuyenxe\index.html ====================
+
+{% extends "base.html" %}
+{% block title %}{{ 'Lá»‹ch chuyáº¿n sáº¯p cháº¡y' if loc_lich else 'Quáº£n lÃ½ chuyáº¿n xe' }}{% endblock %}
+
+{% block content %}
+<h1>{{ 'Lá»‹ch chuyáº¿n sáº¯p cháº¡y' if loc_lich else 'Quáº£n lÃ½ chuyáº¿n xe' }}</h1>
+
+<p>
+    <a class="btn btn-primary" href="{{ url_for('chuyen_xe.them') }}">Láº­p chuyáº¿n</a>
+    {% if loc_lich %}
+        <a class="btn btn-secondary" href="{{ url_for('chuyen_xe.danh_sach') }}">
+            Táº¥t cáº£ chuyáº¿n
+        </a>
+    {% else %}
+        <a class="btn btn-secondary" href="{{ url_for('chuyen_xe.danh_sach', lich=1) }}">
+            Lá»‹ch chuyáº¿n sáº¯p cháº¡y
+        </a>
+    {% endif %}
+</p>
+
+<form method="get" action="{{ url_for('chuyen_xe.danh_sach') }}" class="mb-3">
+    {% if loc_lich %}
+        <input type="hidden" name="lich" value="1">
+    {% endif %}
+
+    <label for="ngay">NgÃ y cháº¡y</label>
+    <input type="date" id="ngay" name="ngay" value="{{ ngay_nhap }}"
+           {% if loc_lich %}min="{{ hom_nay }}"{% endif %}>
+    <button class="btn btn-secondary" type="submit">Lá»c</button>
+    <a href="{{ url_for('chuyen_xe.danh_sach', lich=1 if loc_lich else none) }}">
+        Bá» lá»c ngÃ y
+    </a>
+</form>
+
+{% if loi %}
+    <p role="alert">{{ loi }}</p>
+{% elif not danh_sach %}
+    <p>KhÃ´ng cÃ³ chuyáº¿n xe phÃ¹ há»£p.</p>
+{% else %}
+    <div style="overflow-x: auto;">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th scope="col">MÃ£ chuyáº¿n</th>
+                    <th scope="col">NgÃ y cháº¡y</th>
+                    <th scope="col">Biá»ƒn sá»‘</th>
+                    <th scope="col">Tuyáº¿n</th>
+                    <th scope="col">LÃ¡i xe / Phá»¥ xe</th>
+                    <th scope="col">Sá»‘ khÃ¡ch</th>
+                    <th scope="col">GiÃ¡ vÃ©</th>
+                    <th scope="col">Tráº¡ng thÃ¡i</th>
+                    <th scope="col">Thao tÃ¡c</th>
+                </tr>
+            </thead>
+
+            <tbody>
+                {% for c in danh_sach %}
+                    <tr>
+                        <th scope="row">{{ c.ma_chuyen }}</th>
+                        <td>{{ c.ngay_chay.strftime('%d/%m/%Y') }}</td>
+                        <td>{{ c.bien_so }}</td>
+                        <td>{{ c.diem_dau }} â†’ {{ c.diem_cuoi }}</td>
+                        <td>{{ c.ten_lai_xe }}<br>{{ c.ten_phu_xe }}</td>
+                        <td>{{ c.so_khach }}</td>
+                        <td>{{ '{:,}'.format(c.gia_ve|int).replace(',', '.') }} Ä‘</td>
+                        <td>
+                            {{ nhan_trang_thai[c.trang_thai] }}
+                            {% if c.trang_thai == 'HOAN_THANH' %}
+                                <br>
+                                <small>{{ c.do_dai_km_chot }} km Â· Äá»™ khÃ³ {{ c.do_phuc_tap_chot }}</small>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if c.trang_thai == 'DA_LEN_LICH' %}
+                                <a href="{{ url_for('chuyen_xe.sua', ma_chuyen=c.ma_chuyen) }}">Sá»­a</a>
+                                <br>
+                                <a href="{{ url_for('chuyen_xe.hoan_thanh', ma_chuyen=c.ma_chuyen) }}">
+                                    HoÃ n thÃ nh
+                                </a>
+                                <form method="post"
+                                      action="{{ url_for('chuyen_xe.huy', ma_chuyen=c.ma_chuyen) }}"
+                                      onsubmit="return confirm('Báº¡n cÃ³ muá»‘n há»§y chuyáº¿n nÃ y?');">
+                                    <button class="btn btn-danger" type="submit">Há»§y chuyáº¿n</button>
+                                </form>
+                            {% else %}
+                                â€”
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endif %}
+{% endblock %}
+
+==================== FILE: templates\luong\index.html ====================
+
+{% extends "base.html" %}
+
+{% block title %}BÃ¡o cÃ¡o lÆ°Æ¡ng tÃ i xáº¿{% endblock %}
+
+{% block content %}
+<h1>BÃ¡o cÃ¡o lÆ°Æ¡ng tÃ i xáº¿ theo thÃ¡ng</h1>
+
+<form method="get" action="{{ url_for('luong.bao_cao_luong') }}">
+    <div class="mb-3">
+        <label class="form-label" for="thang">Chá»n thÃ¡ng:</label>
+        <input
+            class="form-control"
+            type="month"
+            id="thang"
+            name="thang"
+            value="{{ thang_chon }}"
+            max="{{ thang_hien_tai }}"
+            required
+        >
+    </div>
+    <button class="btn btn-primary" type="submit">Xem báº£ng lÆ°Æ¡ng</button>
+</form>
+
+{% if thang_chon == thang_hien_tai and not loi %}
+    <p><small>Sá»‘ liá»‡u thÃ¡ng hiá»‡n táº¡i Ä‘Æ°á»£c tÃ­nh Ä‘áº¿n háº¿t ngÃ y {{ hom_nay.strftime('%d/%m/%Y') }}.</small></p>
+{% endif %}
+
+{% if loi %}
+    <p class="text-danger" role="alert">{{ loi }}</p>
+{% elif danh_sach_luong %}
+    <div style="overflow-x: auto;">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th scope="col">Há» tÃªn tÃ i xáº¿</th>
+                    <th scope="col">Sá»‘ chuyáº¿n lÃ¡i</th>
+                    <th scope="col">Sá»‘ chuyáº¿n phá»¥</th>
+                    <th scope="col">Tá»•ng lÆ°Æ¡ng</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for dong in danh_sach_luong %}
+                    <tr>
+                        <th scope="row">{{ dong.ho_ten }}</th>
+                        <td>{{ dong.so_chuyen_lai }}</td>
+                        <td>{{ dong.so_chuyen_phu }}</td>
+                        <td>{{ '{:,.0f}'.format(dong.tong_luong).replace(',', '.') }} VND</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <p>ChÆ°a cÃ³ dá»¯ liá»‡u tÃ i xáº¿ trong há»‡ thá»‘ng.</p>
+{% endif %}
+{% endblock %}
+
+==================== FILE: templates\tai_xe\form.html ====================
+
+{% extends "base.html" %}
+
+{% macro o_nhap(ten, nhan, kieu="text", so_ky_tu=none, lon_nhat=none) %}
+    <div class="mb-3">
+        <label class="form-label" for="{{ ten }}">{{ nhan }}</label>
+        <input class="form-control" type="{{ kieu }}" id="{{ ten }}" name="{{ ten }}"
+               value="{{ form.get(ten, '') }}" required
+               {% if so_ky_tu is not none %}maxlength="{{ so_ky_tu }}"{% endif %}
+               {% if lon_nhat is not none %}max="{{ lon_nhat }}"{% endif %}
+               {% if ten in loi %}aria-invalid="true" aria-describedby="loi-{{ ten }}"{% endif %}>
+        {% if ten in loi %}
+            <p class="text-danger" id="loi-{{ ten }}">{{ loi[ten] }}</p>
+        {% endif %}
+    </div>
+{% endmacro %}
+
+{% set dang_sua = ma_tai_xe is not none %}
+{% set tieu_de = 'Sá»­a thÃ´ng tin tÃ i xáº¿' if dang_sua else 'ThÃªm tÃ i xáº¿' %}
+{% set duong_dan_luu = url_for('tai_xe.luu_sua', ma_tai_xe=ma_tai_xe) if dang_sua else url_for('tai_xe.them') %}
+
+{% block title %}{{ tieu_de }}{% endblock %}
+
+{% block content %}
+<h1>{{ tieu_de }}</h1>
+
+<form method="post" action="{{ duong_dan_luu }}">
+    {% if loi.get('chung') %}
+        <p class="text-danger" role="alert">{{ loi.chung }}</p>
+    {% endif %}
+
+    {{ o_nhap('ho_ten', 'Há» vÃ  tÃªn', so_ky_tu=100) }}
+    {{ o_nhap('cmt_cccd', 'Sá»‘ CMT/CCCD', so_ky_tu=20) }}
+    {{ o_nhap('ma_bang_lai', 'MÃ£ sá»‘ báº±ng lÃ¡i', so_ky_tu=30) }}
+    {{ o_nhap('loai_bang_lai', 'Loáº¡i báº±ng lÃ¡i (VD: D, E, FC...)', so_ky_tu=20) }}
+    {{ o_nhap('dia_chi', 'Äá»‹a chá»‰', so_ky_tu=255) }}
+    {{ o_nhap('ngay_sinh', 'NgÃ y sinh', 'date', lon_nhat=hom_nay) }}
+    {{ o_nhap('ngay_bat_dau_lai_xe', 'NgÃ y báº¯t Ä‘áº§u lÃ¡i xe', 'date', lon_nhat=hom_nay) }}
+
+    <button class="btn btn-primary" type="submit">LÆ°u tÃ i xáº¿</button>
+    <a class="btn btn-secondary" href="{{ url_for('tai_xe.danh_sach') }}">Quay láº¡i danh sÃ¡ch</a>
+</form>
+{% endblock %}
+
+==================== FILE: templates\tai_xe\index.html ====================
+
+{% extends "base.html" %}
+
+{% block title %}Danh sÃ¡ch tÃ i xáº¿{% endblock %}
+
+{% block content %}
+<h1>Danh sÃ¡ch tÃ i xáº¿</h1>
+<p><a class="btn btn-primary" href="{{ url_for('tai_xe.them') }}">ThÃªm tÃ i xáº¿</a></p>
+
+{% if loi %}
+    <p class="text-danger" role="alert">{{ loi }}</p>
+{% elif danh_sach_tai_xe %}
+    <div style="overflow-x: auto;">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th scope="col">Há» tÃªn</th>
+                    <th scope="col">CMT/CCCD</th>
+                    <th scope="col">MÃ£ báº±ng lÃ¡i</th>
+                    <th scope="col">Loáº¡i báº±ng</th>
+                    <th scope="col">NgÃ y sinh</th>
+                    <th scope="col">Báº¯t Ä‘áº§u lÃ¡i xe</th>
+                    <th scope="col">ThÃ¢m niÃªn</th>
+                    <th scope="col">Äá»‹a chá»‰</th>
+                    <th scope="col">Thao tÃ¡c</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for tx in danh_sach_tai_xe %}
+                    <tr>
+                        <th scope="row">{{ tx.ho_ten }}</th>
+                        <td>{{ tx.cmt_cccd }}</td>
+                        <td>{{ tx.ma_bang_lai }}</td>
+                        <td>{{ tx.loai_bang_lai }}</td>
+                        <td>{{ tx.ngay_sinh.strftime('%d/%m/%Y') }}</td>
+                        <td>{{ tx.ngay_bat_dau_lai_xe.strftime('%d/%m/%Y') }}</td>
+                        <td>{{ tx.tham_nien }} nÄƒm</td>
+                        <td>{{ tx.dia_chi }}</td>
+                        <td>
+                            <a href="{{ url_for('tai_xe.sua', ma_tai_xe=tx.ma_tai_xe) }}">Sá»­a</a>
+                            <a class="text-danger" href="{{ url_for('tai_xe.xoa', ma_tai_xe=tx.ma_tai_xe) }}">XÃ³a</a>
+                            <a href="{{ url_for('tai_xe.lich_su', ma_tai_xe=tx.ma_tai_xe) }}">Lá»‹ch sá»­ phÃ¢n cÃ´ng</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <p>ChÆ°a cÃ³ tÃ i xáº¿ trong há»‡ thá»‘ng.</p>
+{% endif %}
+{% endblock %}
+
+==================== FILE: templates\tai_xe\lich_su.html ====================
+
+{% extends "base.html" %}
+
+{% block title %}Lá»‹ch sá»­ phÃ¢n cÃ´ng tÃ i xáº¿{% endblock %}
+
+{% block content %}
+<h1>Lá»‹ch sá»­ phÃ¢n cÃ´ng{% if tai_xe %} cá»§a tÃ i xáº¿ {{ tai_xe.ho_ten }}{% endif %}</h1>
+
+{% if loi %}
+    <p class="text-danger" role="alert">{{ loi }}</p>
+{% elif danh_sach_chuyen %}
+    {% set ten_trang_thai = {
+        'DA_LEN_LICH': 'ÄÃ£ lÃªn lá»‹ch',
+        'HOAN_THANH': 'HoÃ n thÃ nh',
+        'DA_HUY': 'ÄÃ£ há»§y'
+    } %}
+    <div style="overflow-x: auto;">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th scope="col">MÃ£ chuyáº¿n</th>
+                    <th scope="col">NgÃ y cháº¡y</th>
+                    <th scope="col">Vai trÃ²</th>
+                    <th scope="col">Tuyáº¿n</th>
+                    <th scope="col">Biá»ƒn sá»‘ xe</th>
+                    <th scope="col">Tráº¡ng thÃ¡i</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for chuyen in danh_sach_chuyen %}
+                    <tr>
+                        <th scope="row">{{ chuyen.ma_chuyen }}</th>
+                        <td>{{ chuyen.ngay_chay.strftime('%d/%m/%Y') }}</td>
+                        <td><strong>{{ chuyen.vai_tro }}</strong></td>
+                        <td>{{ chuyen.diem_dau }} â†’ {{ chuyen.diem_cuoi }}</td>
+                        <td>{{ chuyen.bien_so }}</td>
+                        <td>{{ ten_trang_thai.get(chuyen.trang_thai, chuyen.trang_thai) }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <p>TÃ i xáº¿ nÃ y chÆ°a Ä‘Æ°á»£c phÃ¢n cÃ´ng chuyáº¿n nÃ o.</p>
+{% endif %}
+
+<a class="btn btn-secondary" href="{{ url_for('tai_xe.danh_sach') }}">Quay láº¡i danh sÃ¡ch</a>
+{% endblock %}
+
+==================== FILE: templates\tai_xe\xoa.html ====================
+
+{% extends "base.html" %}
+
+{% block title %}XÃ³a tÃ i xáº¿{% endblock %}
+
+{% block content %}
+<h1>XÃ³a tÃ i xáº¿</h1>
+
+{% if loi %}
+    <p class="text-danger" role="alert">{{ loi }}</p>
+{% elif chuyen %}
+    <p class="text-danger" role="alert">
+        TÃ i xáº¿ <strong>{{ tai_xe.ho_ten }}</strong> Ä‘Ã£ Ä‘Æ°á»£c phÃ¢n cÃ´ng trong chuyáº¿n {{ chuyen.ma_chuyen }}
+        nÃªn khÃ´ng thá»ƒ xÃ³a.
+    </p>
+{% else %}
+    <p>Báº¡n muá»‘n xÃ³a tÃ i xáº¿ <strong>{{ tai_xe.ho_ten }}</strong> (CCCD: {{ tai_xe.cmt_cccd }})?</p>
+    <form method="post" action="{{ url_for('tai_xe.xoa', ma_tai_xe=ma_tai_xe) }}">
+        <button class="btn btn-danger" type="submit">XÃ¡c nháº­n xÃ³a</button>
+    </form>
+{% endif %}
+
+<a class="btn btn-secondary" href="{{ url_for('tai_xe.danh_sach') }}">Quay láº¡i danh sÃ¡ch</a>
+{% endblock %}
+
+==================== FILE: templates\tuyen_xe\form.html ====================
+
+
+{% extends "base.html" %}
+
+{% macro o_nhap(ten, nhan, kieu="text", so_ky_tu=none, nho_nhat=none, lon_nhat=none, buoc=none) %}
+    <div class="mb-3">
+        <label class="form-label" for="{{ ten }}">{{ nhan }}</label>
+        <input class="form-control" type="{{ kieu }}" id="{{ ten }}" name="{{ ten }}"
+               value="{{ form.get(ten, '') }}" required
+               {% if so_ky_tu is not none %}maxlength="{{ so_ky_tu }}"{% endif %}
+               {% if nho_nhat is not none %}min="{{ nho_nhat }}"{% endif %}
+               {% if lon_nhat is not none %}max="{{ lon_nhat }}"{% endif %}
+               {% if buoc is not none %}step="{{ buoc }}"{% endif %}
+               {% if ten in loi %}aria-invalid="true" aria-describedby="loi-{{ ten }}"{% endif %}>
+        {% if ten in loi %}
+            <p class="text-danger" id="loi-{{ ten }}">{{ loi[ten] }}</p>
+        {% endif %}
+    </div>
+{% endmacro %}
+
+{% set dang_sua = ma_tuyen is not none %}
+{% set tieu_de = 'Sá»­a tuyáº¿n xe' if dang_sua else 'ThÃªm tuyáº¿n xe' %}
+{% set duong_dan_luu = url_for('tuyen_xe.luu_sua', ma_tuyen=ma_tuyen) if dang_sua else url_for('tuyen_xe.them') %}
+
+{% block title %}{{ tieu_de }}{% endblock %}
+
+{% block content %}
+<h1>{{ tieu_de }}</h1>
+
+<form method="post" action="{{ duong_dan_luu }}">
+    {% if loi.get('chung') %}
+        <p class="text-danger" role="alert">{{ loi.chung }}</p>
+    {% endif %}
+
+    {{ o_nhap('diem_dau', 'Äiá»ƒm Ä‘áº§u', so_ky_tu=100) }}
+    {{ o_nhap('diem_cuoi', 'Äiá»ƒm cuá»‘i', so_ky_tu=100) }}
+    {{ o_nhap('do_dai_km', 'Äá»™ dÃ i tuyáº¿n (km)', 'number', nho_nhat=0.01, lon_nhat=999999.99, buoc=0.01) }}
+
+    <div class="mb-3">
+        <label class="form-label" for="do_phuc_tap">Äá»™ phá»©c táº¡p</label>
+        <select class="form-select" id="do_phuc_tap" name="do_phuc_tap" required
+                {% if 'do_phuc_tap' in loi %}aria-invalid="true" aria-describedby="loi-do_phuc_tap"{% endif %}>
+            <option value="">-- Chá»n Ä‘á»™ phá»©c táº¡p --</option>
+            {% for muc_do in (1, 2, 3) %}
+                <option value="{{ muc_do }}"
+                    {% if form.get('do_phuc_tap', '')|string == muc_do|string %}selected{% endif %}>
+                    {{ muc_do }}
+                </option>
+            {% endfor %}
+        </select>
+        {% if 'do_phuc_tap' in loi %}
+            <p class="text-danger" id="loi-do_phuc_tap">{{ loi.do_phuc_tap }}</p>
+        {% endif %}
+    </div>
+
+    <button class="btn btn-primary" type="submit">LÆ°u tuyáº¿n xe</button>
+    <a class="btn btn-secondary" href="{{ url_for('tuyen_xe.danh_sach') }}">Quay láº¡i danh sÃ¡ch</a>
+</form>
+{% endblock %}
+
+
+==================== FILE: templates\tuyen_xe\index.html ====================
+
+
+{% extends "base.html" %}
+
+{% block title %}Danh sÃ¡ch tuyáº¿n xe{% endblock %}
+
+{% block content %}
+<h1>Danh sÃ¡ch tuyáº¿n xe</h1>
+<p><a class="btn btn-primary" href="{{ url_for('tuyen_xe.them') }}">ThÃªm tuyáº¿n xe</a></p>
+
+{% if loi %}
+    <p role="alert">{{ loi }}</p>
+{% elif danh_sach_tuyen %}
+    <div style="overflow-x: auto;">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th scope="col">MÃ£ tuyáº¿n</th>
+                    <th scope="col">Äiá»ƒm Ä‘áº§u</th>
+                    <th scope="col">Äiá»ƒm cuá»‘i</th>
+                    <th scope="col">Äá»™ dÃ i (km)</th>
+                    <th scope="col">Äá»™ phá»©c táº¡p</th>
+                    <th scope="col">Thao tÃ¡c</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for tuyen in danh_sach_tuyen %}
+                    <tr>
+                        <th scope="row">{{ tuyen.ma_tuyen }}</th>
+                        <td>{{ tuyen.diem_dau }}</td>
+                        <td>{{ tuyen.diem_cuoi }}</td>
+                        <td>{{ tuyen.do_dai_km }}</td>
+                        <td>{{ tuyen.do_phuc_tap }}</td>
+                        <td>
+                            <a href="{{ url_for('tuyen_xe.sua', ma_tuyen=tuyen.ma_tuyen) }}">Sá»­a</a>
+                            <a class="text-danger" href="{{ url_for('tuyen_xe.xoa', ma_tuyen=tuyen.ma_tuyen) }}">XÃ³a</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <p>ChÆ°a cÃ³ tuyáº¿n xe trong há»‡ thá»‘ng.</p>
+{% endif %}
+{% endblock %}
+
+
+==================== FILE: templates\tuyen_xe\xoa.html ====================
+
+
+{% extends "base.html" %}
+
+{% block title %}XÃ³a tuyáº¿n xe{% endblock %}
+
+{% block content %}
+<h1>XÃ³a tuyáº¿n xe</h1>
+
+{% if loi %}
+    <p role="alert">{{ loi }}</p>
+{% elif chuyen %}
+    <p role="alert">
+        Tuyáº¿n xe <strong>{{ tuyen.diem_dau }} - {{ tuyen.diem_cuoi }}</strong>
+        Ä‘Ã£ Ä‘Æ°á»£c sá»­ dá»¥ng cho chuyáº¿n {{ chuyen.ma_chuyen }}
+        nÃªn khÃ´ng thá»ƒ xÃ³a.
+    </p>
+{% else %}
+    <p>
+        Báº¡n muá»‘n xÃ³a tuyáº¿n xe
+        <strong>{{ tuyen.diem_dau }} - {{ tuyen.diem_cuoi }}</strong>?
+    </p>
+    <form method="post" action="{{ url_for('tuyen_xe.xoa', ma_tuyen=ma_tuyen) }}">
+        <button class="btn btn-danger" type="submit">XÃ¡c nháº­n xÃ³a</button>
+    </form>
+{% endif %}
+
+<a class="btn btn-secondary" href="{{ url_for('tuyen_xe.danh_sach') }}">Quay láº¡i danh sÃ¡ch</a>
+{% endblock %}
+
+
+==================== FILE: templates\xe\form.html ====================
+
+{% extends "base.html" %}
+
+{% macro o_nhap(ten, nhan, kieu="text", so_ky_tu=none, nho_nhat=none, lon_nhat=none) %}
+    <div class="mb-3">
+        <label class="form-label" for="{{ ten }}">{{ nhan }}</label>
+        <input class="form-control" type="{{ kieu }}" id="{{ ten }}" name="{{ ten }}"
+               value="{{ form.get(ten, '') }}" required
+               {% if so_ky_tu is not none %}maxlength="{{ so_ky_tu }}"{% endif %}
+               {% if nho_nhat is not none %}min="{{ nho_nhat }}"{% endif %}
+               {% if lon_nhat is not none %}max="{{ lon_nhat }}"{% endif %}
+               {% if ten in loi %}aria-invalid="true" aria-describedby="loi-{{ ten }}"{% endif %}>
+        {% if ten in loi %}
+            <p class="text-danger" id="loi-{{ ten }}">{{ loi[ten] }}</p>
+        {% endif %}
+    </div>
+{% endmacro %}
+
+{% set dang_sua = ma_xe is not none %}
+{% set tieu_de = 'Sá»­a xe' if dang_sua else 'ThÃªm xe' %}
+{% set duong_dan_luu = url_for('xe.luu_sua', ma_xe=ma_xe) if dang_sua else url_for('xe.them') %}
+
+{% block title %}{{ tieu_de }}{% endblock %}
+
+{% block content %}
+<h1>{{ tieu_de }}</h1>
+
+<form method="post" action="{{ duong_dan_luu }}">
+    {% if loi.get('chung') %}
+        <p class="text-danger" role="alert">{{ loi.chung }}</p>
+    {% endif %}
+
+    {{ o_nhap('bien_so', 'Biá»ƒn sá»‘', so_ky_tu=20) }}
+    {{ o_nhap('hang_san_xuat', 'HÃ£ng sáº£n xuáº¥t', so_ky_tu=80) }}
+    {{ o_nhap('model', 'Model', so_ky_tu=80) }}
+    {{ o_nhap('doi_xe', 'Äá»i xe (nÄƒm sáº£n xuáº¥t)', 'number', nho_nhat=0, lon_nhat=65535) }}
+    {{ o_nhap('mau_xe', 'MÃ u xe', so_ky_tu=80) }}
+    {{ o_nhap('so_ghe', 'Sá»‘ gháº¿', 'number', nho_nhat=3, lon_nhat=65535) }}
+    {{ o_nhap('ngay_dua_vao_su_dung', 'NgÃ y Ä‘Æ°a vÃ o sá»­ dá»¥ng', 'date', lon_nhat=hom_nay) }}
+    {% if not dang_sua %}
+        {{ o_nhap('ngay_bao_duong_cuoi', 'NgÃ y báº£o dÆ°á»¡ng cuá»‘i', 'date', lon_nhat=hom_nay) }}
+    {% elif form.get('ngay_bao_duong_cuoi') %}
+        <div class="mb-3">
+            <span class="form-label">NgÃ y báº£o dÆ°á»¡ng cuá»‘i</span>
+            <p>{{ form.ngay_bao_duong_cuoi.strftime('%d/%m/%Y') }}</p>
+        </div>
+    {% endif %}
+
+    <button class="btn btn-primary" type="submit">LÆ°u xe</button>
+    <a class="btn btn-secondary" href="{{ url_for('xe.danh_sach') }}">Quay láº¡i danh sÃ¡ch</a>
+</form>
+{% endblock %}
+
+
+==================== FILE: templates\xe\index.html ====================
+
+{% extends "base.html" %}
+
+{% block title %}Danh sÃ¡ch xe{% endblock %}
+
+{% block content %}
+<h1>Danh sÃ¡ch xe</h1>
+<p><a class="btn btn-primary" href="{{ url_for('xe.them') }}">ThÃªm xe</a></p>
+
+{% if loi %}
+    <p role="alert">{{ loi }}</p>
+{% elif danh_sach_xe %}
+    <div style="overflow-x: auto;">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th scope="col">Biá»ƒn sá»‘</th>
+                    <th scope="col">HÃ£ng sáº£n xuáº¥t</th>
+                    <th scope="col">Model</th>
+                    <th scope="col">Äá»i xe</th>
+                    <th scope="col">MÃ u xe</th>
+                    <th scope="col">Sá»‘ gháº¿</th>
+                    <th scope="col">Sá»‘ khÃ¡ch tá»‘i Ä‘a</th>
+                    <th scope="col">NgÃ y Ä‘Æ°a vÃ o sá»­ dá»¥ng</th>
+                    <th scope="col">Sá»‘ nÄƒm sá»­ dá»¥ng</th>
+                    <th scope="col">NgÃ y báº£o dÆ°á»¡ng cuá»‘i</th>
+                    <th scope="col">Thao tÃ¡c</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for xe in danh_sach_xe %}
+                    <tr>
+                        <th scope="row">{{ xe.bien_so }}</th>
+                        <td>{{ xe.hang_san_xuat }}</td>
+                        <td>{{ xe.model }}</td>
+                        <td>{{ xe.doi_xe }}</td>
+                        <td>{{ xe.mau_xe }}</td>
+                        <td>{{ xe.so_ghe }}</td>
+                        <td>{{ xe.so_khach_toi_da }}</td>
+                        <td>{{ xe.ngay_dua_vao_su_dung.strftime('%d/%m/%Y') }}</td>
+                        <td>{{ xe.so_nam_su_dung }}</td>
+                        <td>{{ xe.ngay_bao_duong_cuoi.strftime('%d/%m/%Y') }}</td>
+                        <td>
+                            <a href="{{ url_for('xe.sua', ma_xe=xe.ma_xe) }}">Sá»­a</a>
+                            <a class="text-danger" href="{{ url_for('xe.xoa', ma_xe=xe.ma_xe) }}">XÃ³a</a>
+                            <a href="{{ url_for('xe.lich_su', ma_xe=xe.ma_xe) }}">Lá»‹ch sá»­ chuyáº¿n</a>
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <p>ChÆ°a cÃ³ xe trong há»‡ thá»‘ng.</p>
+{% endif %}
+{% endblock %}
+
+
+==================== FILE: templates\xe\lich_su.html ====================
+
+{% extends "base.html" %}
+
+{% block title %}Lá»‹ch sá»­ chuyáº¿n{% endblock %}
+
+{% block content %}
+<h1>Lá»‹ch sá»­ chuyáº¿n{% if xe %} cá»§a xe {{ xe.bien_so }}{% endif %}</h1>
+
+{% if loi %}
+    <p role="alert">{{ loi }}</p>
+{% elif danh_sach_chuyen %}
+    {% set ten_trang_thai = {
+        'DA_LEN_LICH': 'ÄÃ£ lÃªn lá»‹ch',
+        'HOAN_THANH': 'HoÃ n thÃ nh',
+        'DA_HUY': 'ÄÃ£ há»§y'
+    } %}
+    <div style="overflow-x: auto;">
+        <table class="table">
+            <thead>
+                <tr>
+                    <th scope="col">MÃ£ chuyáº¿n</th>
+                    <th scope="col">NgÃ y cháº¡y</th>
+                    <th scope="col">Tuyáº¿n</th>
+                    <th scope="col">LÃ¡i xe</th>
+                    <th scope="col">Phá»¥ xe</th>
+                    <th scope="col">Sá»‘ khÃ¡ch</th>
+                    <th scope="col">GiÃ¡ vÃ©</th>
+                    <th scope="col">Tráº¡ng thÃ¡i</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for chuyen in danh_sach_chuyen %}
+                    <tr>
+                        <th scope="row">{{ chuyen.ma_chuyen }}</th>
+                        <td>{{ chuyen.ngay_chay.strftime('%d/%m/%Y') }}</td>
+                        <td>{{ chuyen.diem_dau }} â†’ {{ chuyen.diem_cuoi }}</td>
+                        <td>{{ chuyen.ten_lai_xe }}</td>
+                        <td>{{ chuyen.ten_phu_xe }}</td>
+                        <td>{{ chuyen.so_khach }}</td>
+                        <td>{{ '{:,.0f}'.format(chuyen.gia_ve).replace(',', '.') }} Ä‘</td>
+                        <td>{{ ten_trang_thai.get(chuyen.trang_thai, chuyen.trang_thai) }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <p>Xe nÃ y chÆ°a cÃ³ chuyáº¿n nÃ o.</p>
+{% endif %}
+
+<a class="btn btn-secondary" href="{{ url_for('xe.danh_sach') }}">Quay láº¡i danh sÃ¡ch</a>
+{% endblock %}
+
+
+==================== FILE: templates\xe\xoa.html ====================
+
+{% extends "base.html" %}
+
+{% block title %}XÃ³a xe{% endblock %}
+
+{% block content %}
+<h1>XÃ³a xe</h1>
+
+{% if loi %}
+    <p role="alert">{{ loi }}</p>
+{% elif chuyen %}
+    <p role="alert">
+        Xe <strong>{{ xe.bien_so }}</strong> Ä‘Ã£ Ä‘Æ°á»£c gÃ¡n cho chuyáº¿n {{ chuyen.ma_chuyen }}
+        nÃªn khÃ´ng thá»ƒ xÃ³a.
+    </p>
+{% else %}
+    <p>Báº¡n muá»‘n xÃ³a xe <strong>{{ xe.bien_so }}</strong>?</p>
+    <form method="post" action="{{ url_for('xe.xoa', ma_xe=ma_xe) }}">
+        <button class="btn btn-danger" type="submit">XÃ¡c nháº­n xÃ³a</button>
+    </form>
+{% endif %}
+
+<a class="btn btn-secondary" href="{{ url_for('xe.danh_sach') }}">Quay láº¡i danh sÃ¡ch</a>
+{% endblock %}
+
+
+==================== FILE: templates\base.html ====================
+
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>{% block title %}Quáº£n lÃ½ váº­n táº£i{% endblock %}</title>
+
+    <!-- Náº¡p file CSS dÃ¹ng chung -->
+    <link rel="stylesheet"
+          href="{{ url_for('static', filename='style.css') }}">
+</head>
+
+<body>
+
+    <div class="app-layout">
+
+        <!-- MENU BÃŠN TRÃI -->
+        <aside class="sidebar">
+
+            <a class="brand" href="{{ url_for('trang_chu') }}">
+                <span class="brand-icon">VT</span>
+                <span>
+                    <strong>QUáº¢N LÃ Váº¬N Táº¢I</strong>
+                    <small>Há»‡ thá»‘ng ná»™i bá»™</small>
+                </span>
+            </a>
+
+            <p class="menu-label">ÄIá»€U HÆ¯á»šNG</p>
+
+            <nav class="menu">
+
+                <a href="{{ url_for('trang_chu') }}"
+                   class="menu-item {{ 'active' if request.path == '/' else '' }}">
+                    Tá»•ng quan
+                </a>
+
+                <a href="{{ url_for('xe.danh_sach') }}"
+                   class="menu-item {{ 'active' if request.path.startswith('/xe') else '' }}">
+                    Quáº£n lÃ½ xe
+                </a>
+
+                <a href="{{ url_for('tuyen_xe.danh_sach') }}"
+                   class="menu-item {{ 'active' if request.path.startswith('/tuyen-xe') else '' }}">
+                    Quáº£n lÃ½ tuyáº¿n xe
+                </a>
+
+                <a href="{{ url_for('tai_xe.danh_sach') }}"
+                   class="menu-item {% if request.blueprint == 'tai_xe' %}active{% endif %}">
+                    Quáº£n lÃ½ tÃ i xáº¿
+                </a>
+
+                <a href="{{ url_for('chuyen_xe.danh_sach') }}"
+                   class="menu-item {{ 'active' if request.path.startswith('/chuyen-xe') else '' }}">
+                    Quáº£n lÃ½ chuyáº¿n xe
+                </a>
+
+                <p class="menu-label">BÃO CÃO</p>
+
+                <a href="{{ url_for('doanh_thu.doanh_thu') }}"
+                   class="menu-item {{ 'active' if request.path.startswith('/bao-cao/doanh-thu') else '' }}">
+                    Doanh thu theo xe
+                </a>
+
+                <a href="{{ url_for('luong.bao_cao_luong') }}"
+                   class="menu-item {% if request.blueprint == 'luong' %}active{% endif %}">
+                    LÆ°Æ¡ng tÃ i xáº¿
+                </a>
+
+                <a href="{{ url_for('bao_duong.danh_sach') }}"
+                   class="menu-item {{ 'active' if request.path.startswith('/bao-cao/bao-duong') else '' }}">
+                    Háº¡n báº£o dÆ°á»¡ng
+                </a>
+
+            </nav>
+
+            <div class="sidebar-footer">
+                Project 5 - Flask & MySQL
+            </div>
+
+        </aside>
+
+        <!-- PHáº¦N BÃŠN PHáº¢I -->
+        <div class="app-main">
+
+            <!-- THANH TIÃŠU Äá»€ -->
+            <header class="topbar">
+                <div>
+                    <small>Há»† THá»NG QUáº¢N LÃ</small>
+                    <h2>HÃ£ng váº­n táº£i hÃ nh khÃ¡ch Ä‘Æ°á»ng dÃ i</h2>
+                </div>
+
+                <span class="topbar-status">Ná»™i bá»™</span>
+            </header>
+
+            <!-- Ná»˜I DUNG Cá»¦A Tá»ªNG TRANG -->
+            <main class="content">
+                {% block content %}
+                {% endblock %}
+            </main>
+
+            <!-- CHÃ‚N TRANG -->
+            <footer class="footer">
+                BÃ i táº­p lá»›n CÆ¡ sá»Ÿ dá»¯ liá»‡u - Project 5
+            </footer>
+
+        </div>
+
+    </div>
+
+</body>
+</html>
+
+==================== FILE: templates\index.html ====================
+
+
+{% extends "base.html" %}
+
+{% block title %}
+Trang chá»§ - Quáº£n lÃ½ váº­n táº£i
+{% endblock %}
+
+{% block content %}
+
+<h1>Tá»•ng quan há»‡ thá»‘ng</h1>
+
+<p>
+    ChÃ o má»«ng Ä‘áº¿n vá»›i há»‡ thá»‘ng quáº£n lÃ½
+    hÃ£ng váº­n táº£i hÃ nh khÃ¡ch Ä‘Æ°á»ng dÃ i.
+</p>
+
+<!-- THONG KE DASHBOARD -->
+
+<div class="dashboard-stats">
+
+    <!-- Tong so xe -->
+    <div class="stat-card">
+        <p class="stat-label">Tá»•ng sá»‘ xe</p>
+
+        <h2 class="stat-number">
+            {{ thong_ke.tong_xe
+               if thong_ke.tong_xe is not none
+               else 'â€”' }}
+        </h2>
+
+        <p class="stat-description">
+            Xe Ä‘ang Ä‘Æ°á»£c quáº£n lÃ½
+        </p>
+    </div>
+
+    <!-- Chuyen xe hom nay -->
+    <div class="stat-card">
+        <p class="stat-label">Chuyáº¿n trong ngÃ y</p>
+
+        <h2 class="stat-number">
+            {{ thong_ke.chuyen_hom_nay
+               if thong_ke.chuyen_hom_nay is not none
+               else 'â€”' }}
+        </h2>
+
+        <p class="stat-description">
+            KhÃ´ng tÃ­nh chuyáº¿n Ä‘Ã£ há»§y
+        </p>
+    </div>
+
+    <!-- Xe qua han bao duong -->
+    <div class="stat-card">
+        <p class="stat-label">Xe quÃ¡ háº¡n báº£o dÆ°á»¡ng</p>
+
+        <h2 class="stat-number">
+            {{ thong_ke.xe_qua_han
+               if thong_ke.xe_qua_han is not none
+               else 'â€”' }}
+        </h2>
+
+        <p class="stat-description">
+            Cáº§n kiá»ƒm tra vÃ  báº£o dÆ°á»¡ng
+        </p>
+    </div>
+
+</div>
+
+<!-- Thong bao du lieu chua san sang -->
+{% if thong_bao %}
+    <div class="dashboard-notice" role="status">
+        {% for noi_dung in thong_bao %}
+            <p>{{ noi_dung }}</p>
+        {% endfor %}
+    </div>
+{% endif %}
+
+<div class="card-grid">
+
+    <div class="card">
+        <h3>Quáº£n lÃ½ xe</h3>
+        <p>
+            Xem danh sÃ¡ch xe, thÃªm, sá»­a, xÃ³a
+            vÃ  tra cá»©u lá»‹ch sá»­ chuyáº¿n xe.
+        </p>
+
+        <a class="btn btn-primary"
+           href="{{ url_for('xe.danh_sach') }}">
+            Xem danh sÃ¡ch xe
+        </a>
+    </div>
+
+    <div class="card">
+        <h3>Quáº£n lÃ½ tuyáº¿n xe</h3>
+        <p>
+            Quáº£n lÃ½ cÃ¡c tuyáº¿n váº­n táº£i,
+            Ä‘iá»ƒm Ä‘i, Ä‘iá»ƒm Ä‘áº¿n vÃ  Ä‘á»™ dÃ i tuyáº¿n.
+        </p>
+
+        <a class="btn btn-primary"
+            href="{{ url_for('tuyen_xe.danh_sach') }}">
+            Xem danh sÃ¡ch tuyáº¿n xe
+        </a>
+    </div>
+
+    <div class="card">
+        <h3>Quáº£n lÃ½ chuyáº¿n xe</h3>
+        <p>
+            Láº­p lá»‹ch chuyáº¿n, phÃ¢n cÃ´ng
+            tÃ i xáº¿ vÃ  cáº­p nháº­t tráº¡ng thÃ¡i.
+        </p>
+
+        <a class="btn btn-primary"
+            href="{{ url_for('chuyen_xe.danh_sach') }}">
+            Xem danh sÃ¡ch chuyáº¿n xe
+        </a>
+    </div>
+
+    <div class="card">
+        <h3>BÃ¡o cÃ¡o vÃ  báº£o dÆ°á»¡ng</h3>
+        <p>
+            Theo dÃµi doanh thu, lÆ°Æ¡ng tÃ i xáº¿
+            vÃ  thá»i háº¡n báº£o dÆ°á»¡ng xe.
+        </p>
+
+        <a class="btn btn-primary"
+            href="{{ url_for('bao_duong.danh_sach') }}">
+            Xem háº¡n báº£o dÆ°á»¡ng
+        </a>
+    </div>
+
+</div>
+
+{% endblock %}
+
+
+==================== FILE: app.py ====================
+
+from contextlib import closing
+from datetime import datetime, timedelta, timezone
+
+from flask import Flask, render_template
+from mysql.connector import Error
+
+from db import get_connection
+
+# TV1 - Quan ly xe
+from modules.xe import bp as xe_bp
+
+# TV2 - Quan ly tuyen va bao cao doanh thu
+from modules.tuyen_xe import bp as tuyen_xe_bp
+from modules.bao_cao import bp as doanh_thu_bp
+
+# TV4 - Quan ly chuyen xe
+from modules.chuyenxe import bp as chuyen_xe_bp
+from modules.tai_xe import bp as tai_xe_bp
+from modules.luong import bp as luong_bp
+
+# TV5 - Bao duong xe
+from modules.bao_duong import (
+    bp as bao_duong_bp,
+    lay_bao_cao,
+    co_bang_chuyen_xe
+)
+
+
+# ==========================================
+# 1. KHOI TAO FLASK
+# ==========================================
+
+app = Flask(__name__)
+
+
+# ==========================================
+# 2. DANG KY BLUEPRINT
+# ==========================================
+
+app.register_blueprint(xe_bp)
+app.register_blueprint(tuyen_xe_bp)
+app.register_blueprint(doanh_thu_bp)
+app.register_blueprint(chuyen_xe_bp)
+app.register_blueprint(bao_duong_bp)
+app.register_blueprint(tai_xe_bp)
+app.register_blueprint(luong_bp)
+
+
+# ==========================================
+# 3. TRANG CHU - DASHBOARD
+# ==========================================
+
+@app.route("/")
+def trang_chu():
+
+    # Lay ngay hien tai theo gio Viet Nam
+    hom_nay = datetime.now(
+        timezone(timedelta(hours=7))
+    ).date()
+
+    thong_ke = {
+        "tong_xe": None,
+        "chuyen_hom_nay": None,
+        "xe_qua_han": None
+    }
+
+    thong_bao = []
+
+    try:
+        with closing(get_connection()) as conn:
+            with closing(
+                conn.cursor(dictionary=True)
+            ) as cursor:
+
+                # 3.1. Dem tong so xe
+                cursor.execute("""
+                    SELECT COUNT(*) AS tong_xe
+                    FROM xe
+                """)
+
+                thong_ke["tong_xe"] = (
+                    cursor.fetchone()["tong_xe"]
+                )
+
+                # 3.2. Kiem tra bang chuyen_xe
+                if co_bang_chuyen_xe(cursor):
+
+                    # 3.3. Dem chuyen trong ngay
+                    cursor.execute("""
+                        SELECT COUNT(*) AS so_chuyen
+                        FROM chuyen_xe
+                        WHERE ngay_chay = %s
+                          AND trang_thai <> 'DA_HUY'
+                    """, (hom_nay,))
+
+                    thong_ke["chuyen_hom_nay"] = (
+                        cursor.fetchone()["so_chuyen"]
+                    )
+
+                    # 3.4. Tinh so xe qua han bao duong
+                    danh_sach = lay_bao_cao(
+                        cursor, hom_nay
+                    )
+
+                    thong_ke["xe_qua_han"] = sum(
+                        1
+                        for xe in danh_sach
+                        if xe["ngay_den_han"] < hom_nay
+                    )
+
+                else:
+                    thong_bao.append(
+                        "ChÆ°a cÃ³ báº£ng chuyen_xe. "
+                        "ChÆ°a thá»ƒ thá»‘ng kÃª chuyáº¿n xe "
+                        "vÃ  háº¡n báº£o dÆ°á»¡ng."
+                    )
+
+    except Error:
+        app.logger.exception(
+            "Khong lay duoc du lieu Dashboard"
+        )
+
+        thong_bao.append(
+            "KhÃ´ng táº£i Ä‘Æ°á»£c Ä‘áº§y Ä‘á»§ sá»‘ liá»‡u MySQL. "
+            "HÃ£y kiá»ƒm tra cÃ¡c báº£ng dá»¯ liá»‡u."
+        )
+
+    return render_template(
+        "index.html",
+        thong_ke=thong_ke,
+        thong_bao=thong_bao,
+        hom_nay=hom_nay
+    )
+
+
+# ==========================================
+# 4. CHAY UNG DUNG
+# ==========================================
+
+if __name__ == "__main__":
+    app.run(debug=True)
+
+==================== FILE: db.py ====================
+
+
+import os
+import mysql.connector
+from dotenv import load_dotenv
+
+# Äá»c cÃ¡c biáº¿n cáº¥u hÃ¬nh tá»« file .env
+load_dotenv()
+
+# HÃ m táº¡o káº¿t ná»‘i Ä‘áº¿n MySQL
+def get_connection():
+    conn = mysql.connector.connect(
+        host=os.getenv("DB_HOST"),
+        port=int(os.getenv("DB_PORT", "3306")),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASSWORD"),
+        database=os.getenv("DB_NAME")
+    )
+    return conn
+
+
+==================== FILE: README.md ====================
+
+# BÃ i táº­p lá»›n CSDL Quáº£n lÃ½ hÃ£ng váº­n táº£i hÃ nh khÃ¡ch Ä‘Æ°á»ng dÃ i
+
+Project 5 cá»§a nhÃ³m 5 thÃ nh viÃªn. á»¨ng dá»¥ng dÃ¹ng Flask vÃ  MySQL Ä‘á»ƒ quáº£n lÃ½ xe, tuyáº¿n, tÃ i xáº¿ vÃ  chuyáº¿n xe, Ä‘á»“ng thá»i láº­p bÃ¡o cÃ¡o doanh thu, lÆ°Æ¡ng vÃ  háº¡n báº£o dÆ°á»¡ng.
+
+[Báº£n yÃªu cáº§u chung cá»§a nhÃ³m](yeu-cau-chung-project-5.md)
+
+## PhÃ¢n cÃ´ng
+
+| ThÃ nh viÃªn | Pháº§n phá»¥ trÃ¡ch | TÃªn nhÃ¡nh gá»£i Ã½ |
+|---|---|---|
+| TV1 | Quáº£n lÃ½ xe vÃ  tá»•ng há»£p EER | `feature/xe-eer` |
+| TV2 | Quáº£n lÃ½ tuyáº¿n, doanh thu vÃ  file SQL | `feature/tuyen-doanh-thu` |
+| TV3 | Quáº£n lÃ½ tÃ i xáº¿ vÃ  lÆ°Æ¡ng thÃ¡ng | `feature/tai-xe-luong` |
+| TV4 | Quáº£n lÃ½ chuyáº¿n vÃ  rÃ ng buá»™c | `feature/chuyen-xe` |
+| TV5 | Báº£o dÆ°á»¡ng vÃ  khung á»©ng dá»¥ng | `feature/bao-duong-khung-app` |
+
+## Quy trÃ¬nh lÃ m viá»‡c
+
+1. Clone repo vÃ  cáº­p nháº­t nhÃ¡nh `develop`.
+2. Táº¡o nhÃ¡nh `feature/...` tá»« `develop` theo pháº§n Ä‘Æ°á»£c giao.
+3. Äáº©y nhÃ¡nh cá»§a mÃ¬nh lÃªn GitHub vÃ  má»Ÿ pull request vÃ o `develop`.
+4. Sau khi kiá»ƒm tra báº£n tÃ­ch há»£p, Ä‘Æ°a báº£n ná»™p sang `main`.
+
+## ThÃ nh pháº§n cáº§n ná»™p
+
+- PDF mÃ´ táº£ cÆ¡ sá»Ÿ dá»¯ liá»‡u vÃ  sÆ¡ Ä‘á»“ EER.
+- `sql/project5.sql` chá»©a cáº¥u trÃºc báº£ng, dá»¯ liá»‡u máº«u vÃ  ba truy váº¥n.
+- MÃ£ nguá»“n Flask, giao diá»‡n vÃ  hÆ°á»›ng dáº«n cháº¡y á»©ng dá»¥ng.
+
+Repo Ä‘Æ°á»£c khá»Ÿi táº¡o vá»›i tÃ i liá»‡u chung Ä‘á»ƒ nhÃ³m báº¯t Ä‘áº§u triá»ƒn khai.
+
+
+## HÆ°á»›ng dáº«n cÃ i Ä‘áº·t vÃ  cháº¡y chÆ°Æ¡ng trÃ¬nh
+
+### 1. YÃªu cáº§u
+
+- Python
+- MySQL 8
+- MySQL Workbench
+- Visual Studio Code
+
+### 2. Táº¡o mÃ´i trÆ°á»ng Python
+
+Má»Ÿ Terminal táº¡i thÆ° má»¥c dá»± Ã¡n:
+
+```powershell
+python -m venv .venv
+```
+
+KÃ­ch hoáº¡t mÃ´i trÆ°á»ng:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+Náº¿u PowerShell cháº·n kÃ­ch hoáº¡t, cháº¡y:
+
+```powershell
+Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+.\.venv\Scripts\Activate.ps1
+```
+
+### 3. CÃ i thÆ° viá»‡n
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+### 4. Cáº¥u hÃ¬nh MySQL
+
+Táº¡o file `.env` tá»« máº«u `.env.example`.
+
+Nháº­p thÃ´ng tin káº¿t ná»‘i MySQL cá»§a mÃ¡y:
+
+```env
+DB_HOST=127.0.0.1
+DB_PORT=3306
+DB_USER=root
+DB_PASSWORD=
+DB_NAME=quan_ly_van_tai
+```
+
+Thay `DB_PASSWORD` báº±ng máº­t kháº©u MySQL cÃ¡ nhÃ¢n.
+
+KhÃ´ng Ä‘Æ°a file `.env` chá»©a máº­t kháº©u lÃªn GitHub.
+
+### 5. Khá»Ÿi táº¡o cÆ¡ sá»Ÿ dá»¯ liá»‡u
+
+Má»Ÿ MySQL Workbench.
+
+Sau khi nhÃ³m tÃ­ch há»£p xong, cháº¡y file:
+
+`sql/project5.sql`
+
+File nÃ y do TV2 tá»•ng há»£p, gá»“m cáº¥u trÃºc cÃ¡c báº£ng
+vÃ  dá»¯ liá»‡u máº«u cá»§a nhÃ³m.
+
+### 6. Cháº¡y á»©ng dá»¥ng
+
+```powershell
+python app.py
+```
+
+Truy cáº­p:
+
+http://127.0.0.1:5000/
+
+### 7. CÃ¡c chá»©c nÄƒng chÃ­nh
+
+- Quáº£n lÃ½ xe
+- Quáº£n lÃ½ tuyáº¿n xe
+- Quáº£n lÃ½ tÃ i xáº¿
+- Quáº£n lÃ½ chuyáº¿n xe
+- BÃ¡o cÃ¡o doanh thu
+- BÃ¡o cÃ¡o lÆ°Æ¡ng
+- BÃ¡o cÃ¡o háº¡n báº£o dÆ°á»¡ng
+- Ghi nháº­n báº£o dÆ°á»¡ng xe
+
+### 8. Kiá»ƒm tra cÃ¡c route Flask
+
+```powershell
+python -m flask --app app routes
+```
+
+
+==================== FILE: requirements.txt ====================
+
+Flask==3.1.3
+mysql-connector-python==26.10.0
+python-dotenv==1.2.4
+
+==================== FILE: yeu-cau-chung-project-5.md ====================
+
+# YÃªu cáº§u chung Project 5
+
+**Quáº£n lÃ½ hÃ£ng váº­n táº£i hÃ nh khÃ¡ch Ä‘Æ°á»ng dÃ i**
+
+**Báº£n 1.0 Â· Ãp dá»¥ng cho 5 thÃ nh viÃªn**
+
+Báº£n nÃ y quy Ä‘á»‹nh tÃªn báº£ng, cÃ¡ch tÃ­nh vÃ  pháº§n bÃ n giao Ä‘á»ƒ cáº£ nhÃ³m lÃ m trÃªn cÃ¹ng má»™t dá»± Ã¡n. Sáº£n pháº©m lÃ  web app ná»™i bá»™ cho nhÃ¢n viÃªn hÃ£ng xe. NhÃ¢n viÃªn nháº­p danh má»¥c xe, tuyáº¿n vÃ  tÃ i xáº¿, láº­p chuyáº¿n, xÃ¡c nháº­n chuyáº¿n Ä‘Ã£ cháº¡y rá»“i xem lÆ°Æ¡ng, doanh thu vÃ  háº¡n báº£o dÆ°á»¡ng.
+
+Äá» bÃ i yÃªu cáº§u **mÃ´ hÃ¬nh EER vÃ  PDF (40%)**, **CSDL MySQL, dá»¯ liá»‡u máº«u vÃ  truy váº¥n trong file SQL (30%)**, **á»©ng dá»¥ng cÃ³ giao diá»‡n vÃ  link GitHub (30%)**. Pháº§n á»©ng dá»¥ng cÃ³ 10% cho cÃ¡c truy váº¥n báº¯t buá»™c vÃ  tá»‘i Ä‘a 20% cho tÃ­nh nÄƒng phá»¥. Flask, cÃ¡ch Ä‘áº·t tÃªn, há»‡ sá»‘ vÃ  quy trÃ¬nh bÃªn dÆ°á»›i lÃ  cÃ¡c quyáº¿t Ä‘á»‹nh triá»ƒn khai cá»§a nhÃ³m.
+
+## 1. PhÃ¢n cÃ´ng vÃ  pháº§n bÃ n giao
+
+| ThÃ nh viÃªn | Phá»¥ trÃ¡ch | BÃ n giao Ä‘á»ƒ ghÃ©p vÃ o dá»± Ã¡n |
+|---|---|---|
+| **TV1** | Xe vÃ  bÃ¡o cÃ¡o thiáº¿t káº¿ CSDL | Báº£ng `xe`, mÃ n hÃ¬nh xe, dá»¯ liá»‡u máº«u. Chá»§ trÃ¬ váº½ EER vÃ  tá»•ng há»£p PDF tá»« pháº§n mÃ´ táº£ cá»§a cáº£ nhÃ³m. Äiá»u phá»‘i lÆ°á»£t ghÃ©p cuá»‘i vÃ  kiá»ƒm tra báº£n ná»™p. |
+| **TV2** | Tuyáº¿n xe, doanh thu vÃ  file SQL | Báº£ng `tuyen_xe`, mÃ n hÃ¬nh tuyáº¿n, truy váº¥n vÃ  mÃ n hÃ¬nh doanh thu tá»«ng xe. Tá»•ng há»£p lá»‡nh táº¡o báº£ng, dá»¯ liá»‡u máº«u vÃ  cáº£ ba truy váº¥n vÃ o `sql/project5.sql`. |
+| **TV3** | TÃ i xáº¿ vÃ  lÆ°Æ¡ng thÃ¡ng | Báº£ng `tai_xe`, mÃ n hÃ¬nh tÃ i xáº¿, dá»¯ liá»‡u máº«u, truy váº¥n vÃ  mÃ n hÃ¬nh lÆ°Æ¡ng thÃ¡ng. |
+| **TV4** | Chuyáº¿n xe vÃ  kiá»ƒm tra rÃ ng buá»™c | Báº£ng `chuyen_xe`, mÃ n hÃ¬nh láº­p vÃ  cáº­p nháº­t chuyáº¿n, kiá»ƒm tra giá»›i háº¡n khÃ¡ch vÃ  hai vai trÃ². BÃ n giao má»™t chuyáº¿n máº«u ngay sau khi chá»‘t cáº¥u trÃºc báº£ng Ä‘á»ƒ TV2, TV3 vÃ  TV5 lÃ m bÃ¡o cÃ¡o song song. |
+| **TV5** | Báº£o dÆ°á»¡ng vÃ  khung giao diá»‡n | Truy váº¥n, mÃ n hÃ¬nh báº£o dÆ°á»¡ng vÃ  thao tÃ¡c cáº­p nháº­t má»‘c báº£o dÆ°á»¡ng. Dá»±ng trang chá»§, menu, khung Flask vÃ  káº¿t ná»‘i MySQL. Viáº¿t hÆ°á»›ng dáº«n cÃ i vÃ  cháº¡y trong `README.md`. |
+
+Má»—i thÃ nh viÃªn tá»± kiá»ƒm tra pháº§n mÃ¬nh, gá»­i mÃ´ táº£ cÃ¡c báº£ng hoáº·c quy táº¯c mÃ¬nh phá»¥ trÃ¡ch cho TV1 vÃ  gá»­i SQL cho TV2. TV1 ghÃ©p mÃ´ hÃ¬nh vÃ  bÃ¡o cÃ¡o tá»« cÃ¡c pháº§n Ä‘Ã£ Ä‘Æ°á»£c kiá»ƒm tra.
+
+## 2. CÃ´ng nghá»‡ vÃ  giao diá»‡n
+
+- **CÃ´ng nghá»‡ chung** dÃ¹ng Python, Flask, Jinja, HTML/CSS vÃ  MySQL 8. Káº¿t ná»‘i báº±ng `mysql-connector-python`. App cháº¡y cá»¥c bá»™ trÃªn trÃ¬nh duyá»‡t vÃ  káº¿t ná»‘i cÃ¹ng cáº¥u trÃºc CSDL `quan_ly_van_tai`. DÃ¹ng InnoDB vÃ  `utf8mb4`.
+- **Cáº¥u hÃ¬nh** dÃ¹ng chung hÃ m `db.get_connection()` vá»›i cÃ¡c biáº¿n `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`. TV5 cung cáº¥p `.env.example`, `requirements.txt` vÃ  hÆ°á»›ng dáº«n thiáº¿t láº­p. Má»—i mÃ¡y dÃ¹ng cáº¥u hÃ¬nh riÃªng, giá»¯ máº­t kháº©u tháº­t ngoÃ i Git.
+- **Giao diá»‡n** dÃ¹ng tiáº¿ng Viá»‡t vÃ  cÃ¹ng má»™t `templates/base.html`. Hiá»ƒn thá»‹ ngÃ y theo `dd/mm/yyyy`, tiá»n theo VND. Khi lÆ°u tháº¥t báº¡i, bÃ¡o lá»—i cáº¡nh ná»™i dung liÃªn quan vÃ  giá»¯ láº¡i dá»¯ liá»‡u Ä‘Ã£ nháº­p Ä‘á»ƒ ngÆ°á»i dÃ¹ng sá»­a.
+- **Dá»¯ liá»‡u** dÃ¹ng `DATE` cho ngÃ y, sá»‘ tháº­p phÃ¢n cho km vÃ  sá»‘ nguyÃªn Ä‘á»“ng cho tiá»n. Láº¥y má»‘c ngÃ y hiá»‡n táº¡i theo giá» Viá»‡t Nam. Khoáº£ng ngÃ y bao gá»“m cáº£ ngÃ y báº¯t Ä‘áº§u vÃ  ngÃ y káº¿t thÃºc.
+
+| MÃ n hÃ¬nh | ÄÆ°á»ng dáº«n thá»‘ng nháº¥t | ThÃ nh viÃªn |
+|---|---|---|
+| Trang chá»§ | `/` | TV5 |
+| Quáº£n lÃ½ xe | `/xe` | TV1 |
+| Quáº£n lÃ½ tuyáº¿n | `/tuyen-xe` | TV2 |
+| Quáº£n lÃ½ tÃ i xáº¿ | `/tai-xe` | TV3 |
+| Quáº£n lÃ½ chuyáº¿n | `/chuyen-xe` | TV4 |
+| Doanh thu theo xe | `/bao-cao/doanh-thu` | TV2 |
+| LÆ°Æ¡ng tÃ i xáº¿ | `/bao-cao/luong` | TV3 |
+| Háº¡n báº£o dÆ°á»¡ng | `/bao-cao/bao-duong` | TV5 |
+
+MÃ n hÃ¬nh danh má»¥c cÃ³ báº£ng vÃ  thao tÃ¡c thÃªm, sá»­a, xÃ³a má»¥c chÆ°a Ä‘Æ°á»£c tham chiáº¿u. MÃ n hÃ¬nh chuyáº¿n dÃ¹ng danh sÃ¡ch chá»n xe, tuyáº¿n vÃ  tÃ i xáº¿, hiá»ƒn thá»‹ giá»›i háº¡n khÃ¡ch ngay khi chá»n xe. MÃ n hÃ¬nh bÃ¡o cÃ¡o cÃ³ bá»™ lá»c phÃ¹ há»£p vÃ  hiá»ƒn thá»‹ káº¿t quáº£ dáº¡ng báº£ng.
+
+TV5 quáº£n lÃ½ `app.py`, `db.py` vÃ  giao diá»‡n dÃ¹ng chung. Má»—i mÃ n hÃ¬nh nghiá»‡p vá»¥ dÃ¹ng má»™t Flask Blueprint trong `modules/` vÃ  thÆ° má»¥c giao diá»‡n tÆ°Æ¡ng á»©ng trong `templates/`. DÃ¹ng tÃªn `xe`, `tuyen_xe`, `tai_xe`, `chuyen_xe`, `doanh_thu`, `luong` vÃ  `bao_duong`. TV5 Ä‘Äƒng kÃ½ cÃ¡c Blueprint trong `app.py` theo báº£ng Ä‘Æ°á»ng dáº«n trÃªn.
+
+## 3. Cáº¥u trÃºc CSDL dÃ¹ng chung
+
+Quy Æ°á»›c tÃªn báº£ng, cá»™t viáº¿t thÆ°á»ng, khÃ´ng dáº¥u, cÃ³ dáº¥u gáº¡ch dÆ°á»›i. CÃ¡c cá»™t cÃ³ `NOT NULL` trá»« hai cá»™t chá»‘t thÃ´ng tin tuyáº¿n. **PK** lÃ  khÃ³a chÃ­nh, **FK** lÃ  khÃ³a ngoáº¡i. Bá»‘n khÃ³a chÃ­nh dÃ¹ng `INT UNSIGNED AUTO_INCREMENT`, cÃ¡c FK cÃ¹ng kiá»ƒu `INT UNSIGNED`.
+
+### Báº£ng xe
+
+| Cá»™t | Kiá»ƒu hoáº·c rÃ ng buá»™c | Ã nghÄ©a |
+|---|---|---|
+| `ma_xe` | PK | MÃ£ ná»™i bá»™ cá»§a xe |
+| `bien_so` | `VARCHAR(20) UNIQUE` | Biá»ƒn sá»‘. Bá» khoáº£ng tráº¯ng thá»«a vÃ  chuyá»ƒn chá»¯ hoa trÆ°á»›c khi lÆ°u |
+| `mau_xe`, `hang_san_xuat`, `model` | `VARCHAR(80)` | MÃ u, hÃ£ng vÃ  model xe |
+| `doi_xe` | `SMALLINT UNSIGNED` | NÄƒm sáº£n xuáº¥t |
+| `ngay_dua_vao_su_dung` | `DATE` | Má»‘c tÃ­nh sá»‘ nÄƒm sá»­ dá»¥ng |
+| `so_ghe` | `SMALLINT UNSIGNED`, tá»‘i thiá»ƒu 3 | Tá»•ng sá»‘ gháº¿, gá»“m hai gháº¿ cho lÃ¡i xe vÃ  phá»¥ xe |
+| `ngay_bao_duong_cuoi` | `DATE` | Má»‘c báº¯t Ä‘áº§u chu ká»³ báº£o dÆ°á»¡ng hiá»‡n táº¡i |
+
+Sá»‘ nÄƒm sá»­ dá»¥ng lÃ  sá»‘ nÄƒm trÃ²n tá»« `ngay_dua_vao_su_dung` Ä‘áº¿n ngÃ y xem. NgÃ y Ä‘Æ°a vÃ o sá»­ dá»¥ng vÃ  ngÃ y báº£o dÆ°á»¡ng cuá»‘i khÃ´ng Ä‘Æ°á»£c sau hÃ´m nay, ngÃ y báº£o dÆ°á»¡ng cuá»‘i khÃ´ng Ä‘Æ°á»£c trÆ°á»›c ngÃ y Ä‘Æ°a vÃ o sá»­ dá»¥ng.
+
+### Báº£ng tai_xe
+
+| Cá»™t | Kiá»ƒu hoáº·c rÃ ng buá»™c | Ã nghÄ©a |
+|---|---|---|
+| `ma_tai_xe` | PK | MÃ£ ná»™i bá»™ cá»§a tÃ i xáº¿ |
+| `ho_ten` | `VARCHAR(100)` | Há» tÃªn |
+| `cmt_cccd` | `VARCHAR(20) UNIQUE` | Sá»‘ giáº¥y tá» lÆ°u dáº¡ng chuá»—i Ä‘á»ƒ giá»¯ sá»‘ 0 Ä‘áº§u |
+| `ma_bang_lai` | `VARCHAR(30) UNIQUE` | MÃ£ sá»‘ báº±ng lÃ¡i |
+| `loai_bang_lai` | `VARCHAR(20)` | Loáº¡i báº±ng lÃ¡i |
+| `dia_chi` | `VARCHAR(255)` | Äá»‹a chá»‰ |
+| `ngay_sinh` | `DATE` | NgÃ y sinh |
+| `ngay_bat_dau_lai_xe` | `DATE` | Má»‘c tÃ­nh thÃ¢m niÃªn |
+
+ThÃ¢m niÃªn lÃ  sá»‘ nÄƒm trÃ²n tá»« `ngay_bat_dau_lai_xe` Ä‘áº¿n ngÃ y xem. Má»‘c báº¯t Ä‘áº§u pháº£i sau ngÃ y sinh vÃ  khÃ´ng sau hÃ´m nay.
+
+### Báº£ng tuyen_xe
+
+| Cá»™t | Kiá»ƒu hoáº·c rÃ ng buá»™c | Ã nghÄ©a |
+|---|---|---|
+| `ma_tuyen` | PK | MÃ£ ná»™i bá»™ cá»§a tuyáº¿n |
+| `diem_dau`, `diem_cuoi` | `VARCHAR(100)` | Äiá»ƒm Ä‘i vÃ  Ä‘iá»ƒm Ä‘áº¿n |
+| `do_dai_km` | `DECIMAL(8,2)`, lá»›n hÆ¡n 0 | QuÃ£ng Ä‘Æ°á»ng cá»§a má»™t chuyáº¿n theo tuyáº¿n |
+| `do_phuc_tap` | `TINYINT UNSIGNED`, nháº­n 1, 2 hoáº·c 3 | Má»©c Ä‘á»™ khÃ³ |
+
+### Báº£ng chuyen_xe
+
+| Cá»™t | Kiá»ƒu hoáº·c rÃ ng buá»™c | Ã nghÄ©a |
+|---|---|---|
+| `ma_chuyen` | PK | MÃ£ chuyáº¿n |
+| `ma_xe` | FK â†’ `xe.ma_xe` | Xe thá»±c hiá»‡n chuyáº¿n |
+| `ma_tuyen` | FK â†’ `tuyen_xe.ma_tuyen` | Tuyáº¿n cá»§a chuyáº¿n |
+| `ma_lai_xe`, `ma_phu_xe` | Hai FK â†’ `tai_xe.ma_tai_xe` | Hai tÃ i xáº¿ khÃ¡c nhau, má»—i ngÆ°á»i giá»¯ má»™t vai trÃ² |
+| `ngay_chay` | `DATE` | NgÃ y dá»± kiáº¿n khi láº­p chuyáº¿n, ngÃ y thá»±c táº¿ khi xÃ¡c nháº­n hoÃ n thÃ nh |
+| `so_khach` | `SMALLINT UNSIGNED` | Sá»‘ khÃ¡ch trÃªn chuyáº¿n |
+| `gia_ve` | `DECIMAL(12,0)`, lá»›n hÆ¡n hoáº·c báº±ng 0 | GiÃ¡ má»™t vÃ©, Ä‘Æ¡n vá»‹ Ä‘á»“ng |
+| `trang_thai` | `ENUM('DA_LEN_LICH','HOAN_THANH','DA_HUY')` | Máº·c Ä‘á»‹nh `DA_LEN_LICH` |
+| `do_dai_km_chot` | `DECIMAL(8,2)`, cho phÃ©p NULL | Km cá»§a tuyáº¿n táº¡i lÃºc xÃ¡c nháº­n hoÃ n thÃ nh |
+| `do_phuc_tap_chot` | `TINYINT UNSIGNED`, cho phÃ©p NULL | Äá»™ khÃ³ cá»§a tuyáº¿n táº¡i lÃºc xÃ¡c nháº­n hoÃ n thÃ nh |
+
+**Quan há»‡ cáº§n cÃ³ trÃªn EER.** Xe vÃ  tuyáº¿n Ä‘á»u cÃ³ thá»ƒ gáº¯n vá»›i 0 hoáº·c nhiá»u chuyáº¿n. Má»—i chuyáº¿n cÃ³ Ä‘Ãºng má»™t xe, má»™t tuyáº¿n, má»™t lÃ¡i xe vÃ  má»™t phá»¥ xe. TÃ i xáº¿ cÃ³ thá»ƒ tham gia 0 hoáº·c nhiá»u chuyáº¿n á»Ÿ tá»«ng vai trÃ². Váº½ hai quan há»‡ riÃªng giá»¯a tÃ i xáº¿ vÃ  chuyáº¿n, Ä‘á»“ng thá»i ghi rÃ ng buá»™c hai vai trÃ² do hai ngÆ°á»i khÃ¡c nhau Ä‘áº£m nhiá»‡m. Ghi sá»‘ nÄƒm sá»­ dá»¥ng vÃ  thÃ¢m niÃªn lÃ  thuá»™c tÃ­nh dáº«n xuáº¥t.
+
+## 4. Quy táº¯c khi nháº­p vÃ  cáº­p nháº­t
+
+1. **Giá»›i háº¡n sá»‘ khÃ¡ch.** Khi lÆ°u hoáº·c xÃ¡c nháº­n chuyáº¿n, kiá»ƒm tra `0 â‰¤ so_khach â‰¤ so_ghe - 2` theo xe Ä‘Æ°á»£c chá»n. Náº¿u sá»­a sá»‘ gháº¿ cá»§a xe, kiá»ƒm tra sá»‘ khÃ¡ch cá»§a cÃ¡c chuyáº¿n Ä‘Ã£ lÃªn lá»‹ch Ä‘ang dÃ¹ng xe Ä‘Ã³. VÃ­ dá»¥ xe 45 gháº¿ chá»Ÿ tá»‘i Ä‘a 43 khÃ¡ch.
+2. **PhÃ¢n cÃ´ng tÃ i xáº¿.** Hai vai trÃ² Ä‘á»u báº¯t buá»™c vÃ  pháº£i khÃ¡c nhau. Má»™t ngÆ°á»i cÃ³ thá»ƒ lÃ¡i chuyáº¿n nÃ y vÃ  lÃ m phá»¥ xe á»Ÿ chuyáº¿n khÃ¡c.
+3. **VÃ²ng Ä‘á»i chuyáº¿n.** Chuyáº¿n Ä‘Ã£ lÃªn lá»‹ch cÃ³ thá»ƒ sá»­a thÃ´ng tin, chuyá»ƒn sang hoÃ n thÃ nh hoáº·c há»§y. Khi hoÃ n thÃ nh, xÃ¡c nháº­n láº¡i ngÃ y cháº¡y, sá»‘ khÃ¡ch vÃ  giÃ¡ vÃ©. NgÃ y cháº¡y khÃ´ng Ä‘Æ°á»£c sau hÃ´m nay. LÆ°u hai cá»™t chá»‘t cá»§a tuyáº¿n cÃ¹ng láº§n cáº­p nháº­t tráº¡ng thÃ¡i. Chuyáº¿n Ä‘Ã£ hoÃ n thÃ nh hoáº·c Ä‘Ã£ há»§y dÃ¹ng Ä‘á»ƒ tra cá»©u.
+4. **Giá»¯ dá»¯ liá»‡u liÃªn káº¿t.** MySQL giá»¯ PK, FK, tÃ­nh duy nháº¥t vÃ  cÃ¡c kiá»ƒm tra nhÆ° Ä‘á»™ khÃ³ há»£p lá»‡, giÃ¡ vÃ© khÃ´ng Ã¢m. Hai cá»™t chá»‘t pháº£i cÃ³ giÃ¡ trá»‹ há»£p lá»‡ khi chuyáº¿n hoÃ n thÃ nh, cÃ²n láº¡i Ä‘á»ƒ NULL. App kiá»ƒm tra cÃ¡c Ä‘iá»u kiá»‡n phá»¥ thuá»™c báº£ng khÃ¡c hoáº·c ngÃ y hiá»‡n táº¡i trÆ°á»›c khi ghi. Náº¿u má»™t xe, tuyáº¿n hoáº·c tÃ i xáº¿ Ä‘Ã£ Ä‘Æ°á»£c chuyáº¿n tham chiáº¿u, bÃ¡o rÃµ lÃ½ do khi ngÆ°á»i dÃ¹ng yÃªu cáº§u xÃ³a.
+5. **Ghi nháº­n báº£o dÆ°á»¡ng.** Chá»n xe vÃ  nháº­p ngÃ y báº£o dÆ°á»¡ng trong khoáº£ng tá»« ngÃ y báº£o dÆ°á»¡ng cuá»‘i Ä‘Ã£ lÆ°u Ä‘áº¿n hÃ´m nay. LÆ°u vÃ o `xe.ngay_bao_duong_cuoi` Ä‘á»ƒ báº¯t Ä‘áº§u chu ká»³ má»›i.
+
+## 5. CÃ¡ch tÃ­nh ba bÃ¡o cÃ¡o
+
+Chá»‰ dÃ¹ng chuyáº¿n `HOAN_THANH` Ä‘Ã£ cháº¡y tÃ­nh Ä‘áº¿n ngÃ y xem. Hai cá»™t chá»‘t giá»¯ nguyÃªn km vÃ  Ä‘á»™ khÃ³ cá»§a chuyáº¿n khi ngÆ°á»i dÃ¹ng sá»­a thÃ´ng tin tuyáº¿n sau nÃ y. App cháº¡y cÃ¹ng logic SQL vá»›i file ná»™p vÃ  truyá»n bá»™ lá»c báº±ng tham sá»‘.
+
+| Äá»™ khÃ³ | Há»‡ sá»‘ lÆ°Æ¡ng | Há»‡ sá»‘ km | LÆ°Æ¡ng phá»¥ xe má»—i chuyáº¿n | LÆ°Æ¡ng lÃ¡i xe má»—i chuyáº¿n |
+|---:|---:|---:|---:|---:|
+| 1 | 1,00 | 1,00 | 100.000 Ä‘ | 200.000 Ä‘ |
+| 2 | 1,25 | 1,25 | 125.000 Ä‘ | 250.000 Ä‘ |
+| 3 | 1,50 | 1,50 | 150.000 Ä‘ | 300.000 Ä‘ |
+
+### LÆ°Æ¡ng tÃ i xáº¿
+
+Máº·c Ä‘á»‹nh hiá»ƒn thá»‹ thÃ¡ng hiá»‡n táº¡i tÃ­nh Ä‘áº¿n hÃ´m nay, cho chá»n cÃ¡c thÃ¡ng Ä‘Ã£ qua. TÃ­nh tá»«ng chuyáº¿n theo `do_phuc_tap_chot`. LÆ°Æ¡ng phá»¥ xe báº±ng 100.000 Ä‘á»“ng nhÃ¢n há»‡ sá»‘ lÆ°Æ¡ng. LÆ°Æ¡ng lÃ¡i xe gáº¥p Ä‘Ã´i má»©c phá»¥ xe. Cá»™ng tiá»n theo mÃ£ tÃ i xáº¿ qua cáº£ hai vai trÃ². Hiá»ƒn thá»‹ tÃªn, sá»‘ chuyáº¿n lÃ¡i, sá»‘ chuyáº¿n phá»¥ vÃ  tá»•ng lÆ°Æ¡ng. TÃ i xáº¿ khÃ´ng cÃ³ chuyáº¿n trong ká»³ cÃ³ lÆ°Æ¡ng 0 Ä‘á»“ng.
+
+### Doanh thu tá»«ng xe
+
+NgÆ°á»i dÃ¹ng nháº­p tá»« ngÃ y vÃ  Ä‘áº¿n ngÃ y, vá»›i ngÃ y báº¯t Ä‘áº§u khÃ´ng sau ngÃ y káº¿t thÃºc. Doanh thu cá»§a chuyáº¿n báº±ng `so_khach Ã— gia_ve`. Cá»™ng theo mÃ£ xe trong khoáº£ng ngÃ y. Hiá»ƒn thá»‹ biá»ƒn sá»‘, sá»‘ chuyáº¿n, tá»•ng khÃ¡ch vÃ  tá»•ng doanh thu. Xe khÃ´ng cháº¡y chuyáº¿n nÃ o trong ká»³ cÃ³ doanh thu 0 Ä‘á»“ng.
+
+### Háº¡n báº£o dÆ°á»¡ng
+
+1. Láº¥y cÃ¡c chuyáº¿n cá»§a xe cháº¡y **sau ngÃ y báº£o dÆ°á»¡ng cuá»‘i** Ä‘áº¿n háº¿t ngÃ y xem. NhÃ³m quy Æ°á»›c báº£o dÆ°á»¡ng Ä‘Æ°á»£c ghi nháº­n vÃ o cuá»‘i ngÃ y vÃ¬ há»‡ thá»‘ng lÆ°u kiá»ƒu `DATE`.
+2. Km quy Ä‘á»•i cá»§a chuyáº¿n báº±ng `do_dai_km_chot Ã— há»‡ sá»‘ km`. Cá»™ng toÃ n bá»™ km quy Ä‘á»•i rá»“i má»›i láº¥y pháº§n nguyÃªn cá»§a `tá»•ng km quy Ä‘á»•i / 100` Ä‘á»ƒ ra sá»‘ ngÃ y giáº£m.
+3. Sá»‘ ngÃ y cá»§a chu ká»³ báº±ng `max(0, 360 âˆ’ sá»‘ ngÃ y giáº£m)`. Cá»™ng sá»‘ ngÃ y nÃ y vÃ o ngÃ y báº£o dÆ°á»¡ng cuá»‘i Ä‘á»ƒ ra ngÃ y Ä‘áº¿n háº¡n.
+4. Hiá»ƒn thá»‹ biá»ƒn sá»‘, ngÃ y báº£o dÆ°á»¡ng cuá»‘i, tá»•ng km quy Ä‘á»•i vÃ  ngÃ y Ä‘áº¿n háº¡n. Xe cÃ³ ngÃ y Ä‘áº¿n háº¡n **trÆ°á»›c ngÃ y xem** vÃ o danh sÃ¡ch quÃ¡ háº¡n riÃªng. Xe cÃ³ ngÃ y Ä‘áº¿n háº¡n báº±ng ngÃ y xem hiá»ƒn thá»‹ **Äáº¿n háº¡n hÃ´m nay**.
+
+## 6. TÃ­nh nÄƒng phá»¥ dá»± kiáº¿n Ä‘á»ƒ demo
+
+Äá» cháº¥m 2% cho má»—i tÃ­nh nÄƒng phá»¥ Ä‘Æ°á»£c cÃ´ng nháº­n, tá»‘i Ä‘a 20%. NhÃ³m dÃ¹ng danh sÃ¡ch dÆ°á»›i Ä‘Ã¢y Ä‘á»ƒ chia viá»‡c vÃ  Ä‘á»‘i chiáº¿u khi chuáº©n bá»‹ demo.
+
+| ThÃ nh viÃªn | TÃ­nh nÄƒng 1 | TÃ­nh nÄƒng 2 |
+|---|---|---|
+| TV1 | Quáº£n lÃ½ há»“ sÆ¡ xe | Xem lá»‹ch sá»­ chuyáº¿n cá»§a má»™t xe |
+| TV2 | Quáº£n lÃ½ danh má»¥c tuyáº¿n | Thá»‘ng kÃª sá»‘ chuyáº¿n vÃ  tá»•ng khÃ¡ch theo tuyáº¿n trong thÃ¡ng |
+| TV3 | Quáº£n lÃ½ há»“ sÆ¡ tÃ i xáº¿ | Xem lá»‹ch sá»­ phÃ¢n cÃ´ng cá»§a tÃ i xáº¿ theo vai trÃ² |
+| TV4 | Láº­p chuyáº¿n vÃ  cáº­p nháº­t tráº¡ng thÃ¡i | Xem lá»‹ch chuyáº¿n sáº¯p cháº¡y theo ngÃ y |
+| TV5 | Ghi nháº­n láº§n báº£o dÆ°á»¡ng | Xem tá»•ng quan sá»‘ xe, chuyáº¿n trong ngÃ y vÃ  xe quÃ¡ háº¡n trÃªn trang chá»§ |
+
+## 7. Dá»¯ liá»‡u kiá»ƒm tra chung
+
+**Má»‘c Ä‘á»‘i chiáº¿u cá»‘ Ä‘á»‹nh lÃ  ngÃ y 11/11/2026.** DÃ¹ng xe `29B-123.45` cÃ³ 45 gháº¿, báº£o dÆ°á»¡ng cuá»‘i ngÃ y 01/10/2026. Cho xe cháº¡y má»™t chuyáº¿n Ä‘Ã£ hoÃ n thÃ nh ngÃ y 10/11/2026 vá»›i 40 khÃ¡ch, giÃ¡ vÃ© 120.000 Ä‘á»“ng, tuyáº¿n dÃ i 120 km á»Ÿ má»©c 3. Hai vai trÃ² do hai tÃ i xáº¿ khÃ¡c nhau Ä‘áº£m nhiá»‡m. Trong ca nÃ y xe vÃ  hai tÃ i xáº¿ khÃ´ng cÃ³ chuyáº¿n hoÃ n thÃ nh nÃ o khÃ¡c.
+
+| Thá»­ trÃªn app hoáº·c SQL | Káº¿t quáº£ cáº§n Ä‘áº¡t |
+|---|---|
+| Nháº­p 43 rá»“i 44 khÃ¡ch vá»›i xe 45 gháº¿ | 43 há»£p lá»‡, 44 bá»‹ tá»« chá»‘i vÃ  cÃ³ thÃ´ng bÃ¡o |
+| Chá»n cÃ¹ng ngÆ°á»i lÃ m lÃ¡i xe vÃ  phá»¥ xe | Bá»‹ tá»« chá»‘i trÆ°á»›c khi ghi chuyáº¿n |
+| Xem doanh thu tá»« 10/11 Ä‘áº¿n 10/11 | Xe cÃ³ 1 chuyáº¿n, 40 khÃ¡ch vÃ  4.800.000 Ä‘á»“ng |
+| Xem lÆ°Æ¡ng thÃ¡ng 11/2026 | LÃ¡i xe 300.000 Ä‘á»“ng, phá»¥ xe 150.000 Ä‘á»“ng |
+| Xem báº£o dÆ°á»¡ng táº¡i má»‘c Ä‘á»‘i chiáº¿u | 180 km quy Ä‘á»•i, giáº£m 1 ngÃ y, Ä‘áº¿n háº¡n 25/09/2027 |
+| ThÃªm xe khÃ¡c báº£o dÆ°á»¡ng cuá»‘i 01/10/2025, chÆ°a cÃ³ chuyáº¿n sau Ä‘Ã³ | Äáº¿n háº¡n 26/09/2026 vÃ  náº±m trong danh sÃ¡ch quÃ¡ háº¡n |
+| ThÃªm chuyáº¿n Ä‘Ã£ lÃªn lá»‹ch hoáº·c Ä‘Ã£ há»§y | CÃ¡c sá»‘ liá»‡u cá»§a ba bÃ¡o cÃ¡o khÃ´ng Ä‘á»•i |
+| Äá»•i Ä‘á»™ dÃ i hoáº·c Ä‘á»™ khÃ³ cá»§a tuyáº¿n sau khi chuyáº¿n Ä‘Ã£ hoÃ n thÃ nh | LÆ°Æ¡ng vÃ  km quy Ä‘á»•i cá»§a chuyáº¿n cÅ© khÃ´ng Ä‘á»•i |
+| Ghi nháº­n báº£o dÆ°á»¡ng cho xe máº«u vÃ o 11/11/2026 | Km cá»§a chu ká»³ má»›i báº±ng 0, ngÃ y Ä‘áº¿n háº¡n má»›i lÃ  06/11/2027 |
+
+Dá»¯ liá»‡u máº«u dÃ¹ng thÃ´ng tin giáº£. Kiá»ƒm tra cÃ¡c ca thÃªm hoáº·c sá»­a dá»¯ liá»‡u trÃªn báº£n sao Ä‘á»ƒ giá»¯ nguyÃªn sá»‘ liá»‡u Ä‘á»‘i chiáº¿u. Khi demo khÃ¡c ngÃ y, chá»n ká»³ bÃ¡o cÃ¡o chá»©a dá»¯ liá»‡u Ä‘Ã£ nháº­p hoáº·c Ä‘iá»u chá»‰nh ngÃ y máº«u sao cho chuyáº¿n Ä‘Ã£ hoÃ n thÃ nh náº±m trong ká»³ cáº§n minh há»a.
+
+## 8. TrÃ¬nh tá»± lÃ m vÃ  ná»™p bÃ i
+
+1. **Chuáº©n bá»‹ ná»n chung.** TV1 cÃ¹ng nhÃ³m Ä‘á»‘i chiáº¿u EER vá»›i bá»‘n báº£ng. TV2 Ä‘Æ°a file SQL táº¡o báº£ng vÃ  má»™t bá»™ dá»¯ liá»‡u nhá» lÃªn nhÃ¡nh `develop`. TV5 Ä‘Æ°a khung Flask, káº¿t ná»‘i MySQL vÃ  menu chung lÃªn cÃ¹ng nhÃ¡nh.
+2. **LÃ m song song.** Má»—i thÃ nh viÃªn tÃ¡ch nhÃ¡nh `feature/...` tá»« `develop`. Khi cáº§n Ä‘á»•i cá»™t hoáº·c cÃ´ng thá»©c, cáº­p nháº­t báº£n yÃªu cáº§u, bÃ¡o ngÆ°á»i dÃ¹ng dá»¯ liá»‡u Ä‘Ã³ vÃ  sá»­a SQL chung trÆ°á»›c khi ghÃ©p.
+3. **GhÃ©p vÃ  cháº¡y thá»­.** Má»Ÿ pull request vÃ o `develop`. DÃ¹ng cÃ¹ng má»™t CSDL máº«u Ä‘á»ƒ thá»­ mÃ n hÃ¬nh cá»§a tá»«ng ngÆ°á»i vÃ  cÃ¡c ca á»Ÿ má»¥c 7. Kiá»ƒm tra bÃ¡o cÃ¡o trÃªn app khá»›p vá»›i SQL. Chuyá»ƒn báº£n Ä‘Ã£ kiá»ƒm tra sang `main` Ä‘á»ƒ ná»™p.
+
+| Sáº£n pháº©m ná»™p | Ná»™i dung cáº§n Ä‘á»§ | NgÆ°á»i tá»•ng há»£p |
+|---|---|---|
+| `bao-cao-project-5.pdf` | Bá»‘i cáº£nh, bá»‘n thá»±c thá»ƒ, thuá»™c tÃ­nh, khÃ³a, sÆ¡ Ä‘á»“ EER, bá»™i sá»‘ quan há»‡, má»©c tham gia, rÃ ng buá»™c vÃ  cÃ´ng thá»©c nhÃ³m chá»n | TV1 |
+| `sql/project5.sql` | Táº¡o CSDL vÃ  báº£ng, rÃ ng buá»™c, dá»¯ liá»‡u máº«u, ba truy váº¥n cÃ³ ghi rÃµ tham sá»‘ vÃ  cháº¡y Ä‘Æ°á»£c trÃªn MySQL | TV2 |
+| Link GitHub | MÃ£ nguá»“n app cÃ³ giao diá»‡n, ba bÃ¡o cÃ¡o, cÃ¡c tÃ­nh nÄƒng phá»¥ Ä‘Ã£ lÃ m, SQL vÃ  README hÆ°á»›ng dáº«n cÃ i Ä‘áº·t, cáº¥u hÃ¬nh vÃ  cháº¡y | TV1 Ä‘iá»u phá»‘i, TV5 tá»•ng há»£p hÆ°á»›ng dáº«n |
+
+Má»™t pháº§n Ä‘Æ°á»£c coi lÃ  bÃ n giao xong khi cháº¡y Ä‘Æ°á»£c tá»« giao diá»‡n, dÃ¹ng Ä‘Ãºng dá»¯ liá»‡u vÃ  cÃ´ng thá»©c chung, cÃ³ káº¿t quáº£ Ä‘á»‘i chiáº¿u vÃ  Ä‘Ã£ Ä‘Æ°á»£c ghÃ©p vÃ o `develop`.
+

@@ -1,11 +1,17 @@
 {% extends "base.html" %}
 
 {% macro o_nhap(ten, nhan, kieu="text", so_ky_tu=none, lon_nhat=none) %}
+    {% set la_cccd = (ten == 'cmt_cccd') %}
     <div class="mb-3">
         <label class="form-label" for="{{ ten }}">{{ nhan }}</label>
-        <input class="form-control" type="{{ kieu }}" id="{{ ten }}" name="{{ ten }}"
-               value="{{ form.get(ten, '') }}" required
+        <input class="form-control"
+               type="{{ kieu }}"
+               id="{{ ten }}"
+               name="{{ ten }}"
+               value="{{ form.get(ten, '') }}"
+               required
                {% if so_ky_tu is not none %}maxlength="{{ so_ky_tu }}"{% endif %}
+               {% if la_cccd %}inputmode="numeric" pattern="[0-9]{9}|[0-9]{12}" title="Số CMT/CCCD chỉ được gồm 9 hoặc 12 chữ số"{% endif %}
                {% if lon_nhat is not none %}max="{{ lon_nhat }}"{% endif %}
                {% if ten in loi %}aria-invalid="true" aria-describedby="loi-{{ ten }}"{% endif %}>
         {% if ten in loi %}

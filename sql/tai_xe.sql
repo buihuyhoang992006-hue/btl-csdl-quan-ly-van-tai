@@ -21,8 +21,8 @@ INSERT INTO tai_xe (
     ho_ten, cmt_cccd, ma_bang_lai, loai_bang_lai,
     dia_chi, ngay_sinh, ngay_bat_dau_lai_xe
 ) VALUES
-    ('Nguyễn Văn An', '001085001234', 'B2-01020304', 'D', 'Cầu Giấy, Hà Nội', '1985-05-12', '2010-08-01'),
-    ('Trần Minh Bình', '001092005678', 'B2-05060708', 'E', 'Thanh Xuân, Hà Nội', '1992-11-20', '2016-03-15'),
+    ('Nguyễn Văn An', '000000000401', 'B2-01020304', 'D', 'Cầu Giấy, Hà Nội', '1985-05-12', '2010-08-01'),
+    ('Trần Minh Bình', '000000000402', 'B2-05060708', 'E', 'Thanh Xuân, Hà Nội', '1992-11-20', '2016-03-15'),
     ('Lê Hoàng Cường', '036095009999', 'B2-09101112', 'D', 'Đống Đa, Hà Nội', '1995-02-10', '2019-06-01')
 ON DUPLICATE KEY UPDATE ma_tai_xe = tai_xe.ma_tai_xe;
 
