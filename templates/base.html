@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="vi">
 
@@ -61,6 +62,11 @@
                 <a href="{{ url_for('doanh_thu.doanh_thu') }}"
                    class="menu-item {{ 'active' if request.path.startswith('/bao-cao/doanh-thu') else '' }}">
                     Doanh thu theo xe
+                </a>
+
+                <a href="{{ url_for('doanh_thu.thong_ke_tuyen') }}"
+                class="menu-item {{ 'active' if request.path == '/bao-cao/thong-ke-tuyen' else '' }}">
+                    Thống kê tuyến xe
                 </a>
 
                 <a href="{{ url_for('luong.bao_cao_luong') }}"
