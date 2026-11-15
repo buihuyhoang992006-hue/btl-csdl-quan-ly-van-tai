@@ -1,0 +1,68 @@
+
+{% extends "base.html" %}
+
+{% block title %}Ghi nhận bảo dưỡng{% endblock %}
+
+{% block content %}
+
+<h1>Ghi nhận bảo dưỡng xe</h1>
+
+<div class="card">
+
+    {% if loi %}
+        <p class="text-danger" role="alert">
+            {{ loi }}
+        </p>
+    {% endif %}
+
+    {% if xe %}
+
+        <h3>Biển số: {{ xe.bien_so }}</h3>
+
+        <p>
+            Ngày bảo dưỡng cuối:
+            <strong>
+                {{ xe.ngay_bao_duong_cuoi.strftime('%d/%m/%Y') }}
+            </strong>
+        </p>
+
+        <form method="POST">
+
+            <div class="mb-3">
+                <label class="form-label"
+                       for="ngay_bao_duong_moi">
+                    Ngày bảo dưỡng mới
+                </label>
+
+                <input
+                    class="form-control"
+                    type="date"
+                    id="ngay_bao_duong_moi"
+                    name="ngay_bao_duong_moi"
+                    min="{{ xe.ngay_bao_duong_cuoi.isoformat() }}"
+                    max="{{ hom_nay.isoformat() }}"
+                    value="{{ ngay_nhap }}"
+                    required
+                >
+            </div>
+
+            <button class="btn btn-primary"
+                    type="submit">
+                Lưu bảo dưỡng
+            </button>
+
+            <a class="btn btn-secondary"
+               href="{{ url_for('bao_duong.danh_sach') }}">
+                Quay lại
+            </a>
+        </form>
+
+    {% else %}
+        <a href="{{ url_for('bao_duong.danh_sach') }}">
+            Quay lại danh sách
+        </a>
+    {% endif %}
+
+</div>
+
+{% endblock %}
