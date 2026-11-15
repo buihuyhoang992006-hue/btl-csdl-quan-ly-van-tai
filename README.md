@@ -84,16 +84,33 @@ Thay `DB_PASSWORD` bằng mật khẩu MySQL cá nhân.
 
 Không đưa file `.env` chứa mật khẩu lên GitHub.
 
+
 ### 5. Khởi tạo cơ sở dữ liệu
 
-Mở MySQL Workbench.
+1. Mở MySQL Workbench và kết nối tới MySQL 8.
+2. Chọn File → Open SQL Script.
+3. Mở file `sql/project5.sql` trong thư mục dự án.
+4. Nhấn Execute để chạy toàn bộ file SQL.
+5. Kiểm tra phần Action Output để đảm bảo không có lỗi.
 
-Sau khi nhóm tích hợp xong, chạy file:
+File `project5.sql` bao gồm:
+- Khởi tạo cơ sở dữ liệu `quan_ly_van_tai`.
+- Tạo các bảng `xe`, `tuyen_xe`, `tai_xe`, `chuyen_xe`.
+- Khai báo khóa chính, khóa ngoại và các ràng buộc.
+- Thêm dữ liệu mẫu và thực hiện các truy vấn báo cáo.
 
-`sql/project5.sql`
+Kiểm tra trong MySQL Workbench:
 
-File này do TV2 tổng hợp, gồm cấu trúc các bảng
-và dữ liệu mẫu của nhóm.
+```sql
+USE quan_ly_van_tai;
+SHOW TABLES;
+```
+
+Kết quả cần có đủ 4 bảng trên.
+
+Lưu ý: Với database đã tồn tại, nên sao lưu dữ liệu
+trước khi chạy lại file SQL tổng hợp.
+
 
 ### 6. Chạy ứng dụng
 
@@ -113,6 +130,7 @@ http://127.0.0.1:5000/
 - Quản lý chuyến xe
 - Báo cáo doanh thu
 - Báo cáo lương
+- Thống kê tuyến xe theo tháng
 - Báo cáo hạn bảo dưỡng
 - Ghi nhận bảo dưỡng xe
 

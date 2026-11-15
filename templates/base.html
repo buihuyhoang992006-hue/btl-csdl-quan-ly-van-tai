@@ -64,6 +64,11 @@
                     Doanh thu theo xe
                 </a>
 
+                <a href="{{ url_for('doanh_thu.thong_ke_tuyen') }}"
+                class="menu-item {{ 'active' if request.path == '/bao-cao/thong-ke-tuyen' else '' }}">
+                    Thống kê tuyến xe
+                </a>
+
                 <a href="{{ url_for('luong.bao_cao_luong') }}"
                    class="menu-item {% if request.blueprint == 'luong' %}active{% endif %}">
                     Lương tài xế
