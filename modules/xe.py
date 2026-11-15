@@ -61,7 +61,7 @@ def kiem_tra_xe(form, hom_nay, *, ngay_bao_duong_da_luu=None):
         else:
             xe[cot] = gia_tri
 
-    for cot, toi_thieu in (("doi_xe", 0), ("so_ghe", 3)):
+    for cot, toi_thieu in (("doi_xe", 1), ("so_ghe", 3)):
         try:
             gia_tri = int(form.get(cot, ""))
         except ValueError:
@@ -182,6 +182,27 @@ def sua(ma_xe):
     return hien_thi_form(form, {}, hom_nay, ma_xe=ma_xe)
 
 
+def tim_chuyen_truoc_ngay_su_dung(cursor, ma_xe, ngay_su_dung):
+    try:
+        cursor.execute(
+            """
+            SELECT ma_chuyen, ngay_chay
+            FROM chuyen_xe
+            WHERE ma_xe = %s AND ngay_chay < %s
+              AND trang_thai IN ('DA_LEN_LICH', 'HOAN_THANH')
+            ORDER BY ngay_chay, ma_chuyen
+            LIMIT 1
+            FOR UPDATE
+            """,
+            (ma_xe, ngay_su_dung),
+        )
+    except Error as exc:
+        if exc.errno == errorcode.ER_NO_SUCH_TABLE:
+            return None
+        raise
+    return cursor.fetchone()
+
+
 @bp.post("/<int:ma_xe>/sua")
 def luu_sua(ma_xe):
     hom_nay = datetime.now(MUI_GIO_VIET_NAM).date()
@@ -199,6 +220,17 @@ def luu_sua(ma_xe):
                 if loi:
                     connection.rollback()
                     return hien_thi_form(form, loi, hom_nay, ma_xe=ma_xe, trang_thai=400)
+
+                ngay_su_dung = xe["ngay_dua_vao_su_dung"]
+                if ngay_su_dung > xe_cu["ngay_dua_vao_su_dung"]:
+                    chuyen = tim_chuyen_truoc_ngay_su_dung(cursor, ma_xe, ngay_su_dung)
+                    if chuyen:
+                        loi["ngay_dua_vao_su_dung"] = (
+                            f"Chuyến {chuyen['ma_chuyen']} có ngày chạy {chuyen['ngay_chay']:%d/%m/%Y}. "
+                            "Hãy chọn ngày đưa xe vào sử dụng từ ngày đó trở về trước."
+                        )
+                        connection.rollback()
+                        return hien_thi_form(form, loi, hom_nay, ma_xe=ma_xe, trang_thai=409)
 
                 if xe["so_ghe"] != xe_cu["so_ghe"]:
                     cursor.execute(
