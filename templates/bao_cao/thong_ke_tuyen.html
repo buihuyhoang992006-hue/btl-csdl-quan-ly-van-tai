@@ -20,6 +20,9 @@
     <button type="submit">Thống kê</button>
 </form>
 
+{% if loi %}
+    <p role="alert">{{ loi }}</p>
+{% else %}
 <table border="1" cellpadding="8" cellspacing="0">
     <thead>
         <tr>
@@ -49,4 +52,5 @@
         {% endfor %}
     </tbody>
 </table>
+{% endif %}
 {% endblock %}

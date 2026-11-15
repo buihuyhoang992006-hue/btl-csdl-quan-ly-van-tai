@@ -2,7 +2,7 @@
 from contextlib import closing
 from datetime import datetime
 
-from flask import Blueprint, render_template, request
+from flask import Blueprint, current_app, render_template, request
 from mysql.connector import Error
 
 from db import get_connection
@@ -72,8 +72,6 @@ def doanh_thu():
         da_loc=da_loc
     )
 
-from datetime import datetime
-
 
 @bp.route("/thong-ke-tuyen", methods=["GET"])
 def thong_ke_tuyen():
@@ -88,9 +86,6 @@ def thong_ke_tuyen():
     except ValueError:
         ngay_dau = datetime.now().date().replace(day=1)
         thang = ngay_dau.strftime("%Y-%m")
-
-    conn = get_connection()
-    cursor = conn.cursor(dictionary=True)
 
     sql = """
         SELECT
@@ -114,14 +109,20 @@ def thong_ke_tuyen():
         ORDER BY t.ma_tuyen
     """
 
-    cursor.execute(sql, (ngay_dau, ngay_dau))
-    ds_tuyen = cursor.fetchall()
-
-    cursor.close()
-    conn.close()
+    ds_tuyen = []
+    loi = None
+    try:
+        with closing(get_connection()) as conn:
+            with closing(conn.cursor(dictionary=True)) as cursor:
+                cursor.execute(sql, (ngay_dau, ngay_dau))
+                ds_tuyen = cursor.fetchall()
+    except Error:
+        current_app.logger.exception("Không tải được thống kê tuyến xe")
+        loi = "Không tải được thống kê tuyến xe. Hãy kiểm tra kết nối MySQL và các bảng dữ liệu."
 
     return render_template(
         "bao_cao/thong_ke_tuyen.html",
         ds_tuyen=ds_tuyen,
-        thang=thang
-    )
+        thang=thang,
+        loi=loi,
+    ), (503 if loi else 200)
